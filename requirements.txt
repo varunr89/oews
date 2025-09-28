@@ -1,0 +1,31 @@
+# Core application
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0  # PostgreSQL adapter
+alembic>=1.12.0         # Database migrations
+
+# Data processing
+openpyxl>=3.1.0        # Excel file reading
+
+# Visualization
+plotly>=5.17.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+folium>=0.14.0
+streamlit-folium>=0.15.0
+altair>=5.0.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=23.0.0           # Code formatting
+flake8>=6.0.0           # Linting
+
+# Additional utilities
+python-dotenv>=1.0.0    # Environment variable management
+click>=8.0.0            # CLI tool creation
+tqdm>=4.65.0            # Progress bars for data loading
