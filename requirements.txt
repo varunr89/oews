@@ -29,3 +29,13 @@ flake8>=6.0.0           # Linting
 python-dotenv>=1.0.0    # Environment variable management
 click>=8.0.0            # CLI tool creation
 tqdm>=4.65.0            # Progress bars for data loading
+
+# AI/ML Libraries
+langchain_community==0.3.27
+langchain_openai==0.3.30
+langchain_experimental==0.3.4
+langchain_tavily==0.2.11
+langgraph==0.5.4
+langchain_azure_ai==0.1.2
+pyarrow<19
+setuptools<81
