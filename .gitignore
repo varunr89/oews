@@ -1,1 +1,29 @@
 /.claude
+/.specify
+/.vscode
+/venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+notebook/.env
+alembic/script.py.mako
+.devcontainer/devcontainer.json
+
+# Database files
+*.db
+oews_migration.db
+
+# CSV files
+*.csv
+
+# Excel backup files
+*.xlsx.backup
+*.xlsx.new
+*.xlsx.temp
+
+# Environment files
+.env
+
+# Coverage files
+.coverage
