@@ -1,0 +1,8 @@
+All CSV and Excel files have been migrated to the SQL database.
+
+The raw data files have been removed from this repository to keep it clean.
+The data is now available in the SQL database.
+
+To access the data:TBD
+
+Data migration completed: 2025-10-12
