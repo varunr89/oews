@@ -33,6 +33,44 @@
 ## Summary
 Data migration application to consolidate historical OEWS (Occupational Employment and Wage Statistics) Excel files into a centralized SQL database. The system performs file discovery, schema analysis, unified database schema creation, data migration with type conversion, duplicate handling, and comprehensive validation. Key features include per-file rollback capability, incremental migration support, and data consistency verification. System targets 10 years of data (~700MB total) with robust error handling and audit logging.
 
+## Implementation Reality (Added 2025-10-11)
+
+**CRITICAL UPDATE**: The actual implementation diverged from the planned architecture:
+
+**Planned Architecture**: Direct Excel → SQL migration using service-oriented architecture
+**Actual Implementation**: Excel → CSV → Column Standardization → SQL using root-level scripts
+
+### Dual Implementation Approach
+1. **Production Workflow** (Root Scripts - Currently Used):
+   - `convert_to_csv.py` - Converts Excel to CSV (100 lines)
+   - `standardize_csv_columns.py` - Normalizes 44 column name variants (121 lines)
+   - `migrate_csv_to_db.py` - Loads CSV into SQLite using pandas (100 lines)
+   - **Rationale**: 10-20x faster, debuggable intermediate files, working production database
+
+2. **Service Architecture** (Fully Implemented - Alternative):
+   - `src/services/` - All planned services implemented (file_discovery, schema_analyzer, schema_builder, migration_engine, validator, reporter)
+   - `src/cli/` - Full CLI with commands (discover, analyze, create-schema, migrate, validate, rollback)
+   - `src/models/` - All 10 SQLAlchemy models implemented
+   - **Status**: Complete but not used in primary workflow
+
+### Key Discovery: Column Standardization Required
+Original spec did not account for column name inconsistencies across 13 years of OEWS data:
+- 44 column mapping rules (e.g., 'occ code' → 'OCC_CODE', 'group' → 'O_GROUP')
+- 32 standardized columns in final schema
+- Special handling for variants, abbreviations, and semantic differences
+
+### Folder Structure Deviations
+**Extra directories not in plan**:
+- `config/` - Configuration files (duplicates `src/cli/config.py`)
+- `notebook/` - Jupyter notebook utilities
+- `migrations/` - Empty (Alembic used instead)
+- `src/database/` - Database utilities (overlaps with `src/lib/db_manager.py`)
+
+**Missing implementations**:
+- Unit tests: 0 files (constitutional requirement: >90% coverage)
+- Performance tests: 0 files (planned in tasks.md T047-T048)
+- `data/schemas/` directory (not created)
+
 ## Technical Context
 **Language/Version**: Python 3.10+ (per constitution requirements)
 **Primary Dependencies**: pandas, openpyxl, sqlalchemy, sqlite3/postgresql
@@ -273,8 +311,8 @@ README.md                      # Project documentation
 - [x] Phase 0: Research complete (/plan command)
 - [x] Phase 1: Design complete (/plan command)
 - [x] Phase 2: Task planning complete (/plan command - describe approach only)
-- [ ] Phase 3: Tasks generated (/tasks command)
-- [ ] Phase 4: Implementation complete
+- [x] Phase 3: Tasks generated (/tasks command)
+- [x] Phase 4: Implementation complete (with architectural deviations)
 - [ ] Phase 5: Validation passed
 
 **Gate Status**:
@@ -282,6 +320,14 @@ README.md                      # Project documentation
 - [x] Post-Design Constitution Check: PASS
 - [x] All NEEDS CLARIFICATION resolved
 - [x] Complexity deviations documented (none required)
+
+**Implementation Deviations** (Added 2025-10-11):
+- [ ] ⚠ Constitutional Violation: Unit test coverage 0% (required >90%)
+- [ ] ⚠ Constitutional Violation: Performance tests not implemented
+- [ ] ⚠ Architectural Deviation: Production uses root scripts instead of service architecture
+- [ ] ⚠ Spec Mismatch: Excel → CSV → SQL pipeline (spec describes Excel → SQL)
+- [ ] ⚠ Folder Structure: Extra directories (config/, notebook/, src/database/)
+- [ ] ⚠ Missing Feature: Column standardization not in original spec (44 mappings required)
 
 ---
 *Based on Constitution v1.0.0 - See `.specify/memory/constitution.md`*

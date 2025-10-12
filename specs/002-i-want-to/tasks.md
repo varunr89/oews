@@ -101,15 +101,29 @@
 
 ## Phase 3.9: Validation & Polish
 
-- [ ] T043 [P] Unit tests for Excel parser in tests/unit/test_lib/test_excel_parser.py
-- [ ] T044 [P] Unit tests for type converter in tests/unit/test_lib/test_type_converter.py
-- [ ] T045 [P] Unit tests for models in tests/unit/test_models/ (one file per model)
-- [ ] T046 [P] Unit tests for services in tests/unit/test_services/ (one file per service)
-- [ ] T047 Performance tests with 70MB file processing in tests/performance/test_large_file_migration.py
-- [ ] T048 Memory usage validation tests in tests/performance/test_memory_constraints.py
+- [ ] T043 [P] Unit tests for Excel parser in tests/unit/test_lib/test_excel_parser.py - ⚠ NOT IMPLEMENTED (Constitutional Violation)
+- [ ] T044 [P] Unit tests for type converter in tests/unit/test_lib/test_type_converter.py - ⚠ NOT IMPLEMENTED (Constitutional Violation)
+- [ ] T045 [P] Unit tests for models in tests/unit/test_models/ (one file per model) - ⚠ NOT IMPLEMENTED (Constitutional Violation)
+- [ ] T046 [P] Unit tests for services in tests/unit/test_services/ (one file per service) - ⚠ NOT IMPLEMENTED (Constitutional Violation)
+- [ ] T047 Performance tests with 70MB file processing in tests/performance/test_large_file_migration.py - ⚠ NOT IMPLEMENTED (Constitutional Violation)
+- [ ] T048 Memory usage validation tests in tests/performance/test_memory_constraints.py - ⚠ NOT IMPLEMENTED (Constitutional Violation)
 - [ ] T049 Quickstart validation - execute complete quickstart.md scenario as automated test
 - [ ] T050 [P] Create sample OEWS test data fixtures in data/test_fixtures/
 - [ ] T051 [P] Update README.md with installation and usage instructions
+
+## Phase 3.10: Actual Implementation (Root Scripts) - NOT IN ORIGINAL PLAN
+
+**These tasks were completed but were NOT part of the original task list:**
+
+- [x] T052 Create convert_to_csv.py script to convert Excel files to CSV format (100 lines)
+- [x] T053 Create standardize_csv_columns.py script with 44 column mapping rules (121 lines)
+- [x] T054 Create migrate_csv_to_db.py script for pandas-based CSV to SQLite migration (100 lines)
+- [x] T055 Create analyze_columns.py script to analyze column variations across files
+- [x] T056 Discover and document column name inconsistencies across 13 years of OEWS data
+- [x] T057 Implement COLUMN_MAPPING dictionary with 44 mapping rules
+- [x] T058 Implement STANDARD_COLUMNS array defining 32 canonical columns
+- [x] T059 Test and validate Excel → CSV → SQL pipeline with production data
+- [x] T060 Generate working SQLite database (data/oews.db) with 400K+ records per year
 
 ## Dependencies
 
