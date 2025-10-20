@@ -1,6 +1,4 @@
 # Core application
-streamlit>=1.28.0
-pandas>=2.0.0
 numpy>=1.24.0
 
 # Database
@@ -9,15 +7,9 @@ psycopg2-binary>=2.9.0  # PostgreSQL adapter
 alembic>=1.12.0         # Database migrations
 
 # Data processing
-openpyxl>=3.1.0        # Excel file reading
-
-# Visualization
-plotly>=5.17.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-folium>=0.14.0
-streamlit-folium>=0.15.0
-altair>=5.0.0
+openpyxl>=3.1.0        # Excel file reading (legacy)
+polars>=0.20.0         # Fast DataFrame library with fastexcel support
+fastexcel>=0.10.0      # Rust-based Excel reader (10-100x faster than pandas)
 
 # Development and testing
 pytest>=7.0.0
@@ -29,3 +21,12 @@ flake8>=6.0.0           # Linting
 python-dotenv>=1.0.0    # Environment variable management
 click>=8.0.0            # CLI tool creation
 tqdm>=4.65.0            # Progress bars for data loading
+requests>=2.31.0        # HTTP requests for data downloads
+
+# Azure deployment (003-hosted-sql-db)
+azure-identity==1.15.0
+azure-mgmt-sql
+azure-mgmt-resource==23.0.0
+azure-mgmt-authorization>=1.0.0
+pyodbc>=5.0.0
+pymssql>=2.2.0
