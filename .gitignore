@@ -1,7 +1,13 @@
 # Project-specific
-/.claude
-/.specify
-/venv
+.azure-config/
+.azure-extensions/
+.claude/
+.codex/
+.specify/
+.uv-cache/
+.uv-tools/
+.venv/
+node_modules/
 notebook/.env
 alembic/script.py.mako
 .devcontainer/devcontainer.json
@@ -14,11 +20,14 @@ oews_migration.db
 
 # Data files
 *.csv
-*.xlsx
 *.xls
+*.xlsx
 *.xlsx.backup
 *.xlsx.new
 *.xlsx.temp
+data/column_inventory.json
+data/column_variants.json
+data/standardized/
 
 # Environment files
 .env
@@ -75,10 +84,10 @@ htmlcov/
 .python-version
 
 # Environments
-venv/
 ENV/
 env/
 .venv
+/venv
 
 # mypy
 .mypy_cache/

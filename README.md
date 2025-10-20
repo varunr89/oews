@@ -81,24 +81,25 @@ cp .env.template .env
 
 ### Data Migration
 
-1. **Convert Excel to CSV**:
+1. **Run the full pipeline (analyze → standardize → migrate)**:
 ```bash
-python src/cli/scripts/excel_to_csv.py --input-dir /path/to/excel/files
+python -m src.cli.scripts.oews_pipeline all
 ```
 
-2. **Analyze Column Schemas**:
-```bash
-python src/cli/scripts/analyze_columns.py --input-dir /path/to/csv/files
-```
+   This command inspects the raw CSV headers under `data/csv`, writes
+   standardized parquet files to `data/standardized`, and materializes a
+   `data/oews.db` SQLite database ready for analytics.
 
-3. **Standardize Columns**:
+2. **Run individual stages (optional)**:
 ```bash
-python src/cli/scripts/standardize_csv_columns.py --input-dir /path/to/csv/files
-```
+# Column inventory + diagnostics
+python -m src.cli.scripts.oews_pipeline analyze --sample-rows 50
 
-4. **Migrate to Database**:
-```bash
-python src/cli/scripts/migrate_csv_to_db.py --input-dir /path/to/csv/files --db-url sqlite:///oews.db
+# Column standardization to parquet (uses Polars + multithreading)
+python -m src.cli.scripts.oews_pipeline standardize --workers 4
+
+# SQLite migration with batched inserts and tuned pragmas
+python -m src.cli.scripts.oews_pipeline migrate --workers 4 --batch-size 50000
 ```
 
 ### Database Management
@@ -116,6 +117,31 @@ alembic upgrade head
 ```bash
 streamlit run app.py
 ```
+
+### Azure SQL Deployment
+
+The hosted SQL deployment workflow provisions Azure resources, migrates a local
+SQLite database, and validates the results. Ensure you have the Azure CLI
+installed and authenticated via `az login` before running the command below.
+
+```bash
+# Deploy a local SQLite database to Azure SQL Serverless
+python -m src.cli.main deploy-azure data/oews.db
+```
+
+The CLI performs the following steps:
+
+1. Validates the `.env` configuration and source database file.
+2. Verifies the current Azure CLI session and required permissions.
+3. Creates an Azure resource group, SQL server, and serverless database.
+4. Extracts the SQLite schema, converts it to T-SQL, and applies it to Azure.
+5. Transfers data in batches with progress updates.
+6. Runs post-migration validation (row counts and sample hashing) and writes a
+   JSON report to `logs/validation_report_<job_id>.json`.
+
+Deployment logs are stored under `logs/azure-deployment.log`. No credentials or
+access tokens are written to the log file—sensitive values are redacted to
+comply with SR-001.
 
 ## Data Source
 
