@@ -1,62 +1,26 @@
-"""
-Analyze OEWS CSV column layouts and build an inventory for downstream migration.
-
-This script walks the year-organized folders under ``data/csv`` (or a supplied
-root), skips non-data artifacts (field descriptions, filler/update files), and
-collects:
-
-* Raw column headers per file
-* Normalized column names used for standardization
-* Sample sentinel values (e.g. ``#``, ``**``) that require cleaning
-* File-level metadata such as year, estimated row count, and byte size
-
-Two JSON artifacts are produced inside ``data`` by default:
-
-``column_inventory.json``
-    Array with one entry per detected data CSV describing columns, sample
-    values, and metadata. This is useful for debugging individual files.
-
-``column_variants.json``
-    Mapping of normalized column keys -> known header variants with frequency
-    counts. This feeds directly into the column standardization script.
-
-The script is intentionally lightweight: it reads only the header row and a
-small sample (default: 200 rows) to avoid loading the entire dataset.
-"""
+"""Analyze OEWS CSV column layouts and build an inventory for downstream migration."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
+import logging
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-try:
-    from ._common import (
-        DEFAULT_DATA_ROOT,
-        DEFAULT_OUTPUT_DIR,
-        COMMON_SUPPRESSION_VALUES,
-        detect_year,
-        iter_data_csv_files,
-        normalize_header,
-        read_header_and_sample,
-    )
-except ImportError:  # pragma: no cover - script entrypoint fallback
-    import sys
+from ._common import (
+    COMMON_SUPPRESSION_VALUES,
+    DEFAULT_DATA_ROOT,
+    DEFAULT_OUTPUT_DIR,
+    detect_year,
+    iter_data_csv_files,
+    normalize_header,
+    read_header_and_sample,
+)
 
-    sys.path.append(str(Path(__file__).resolve().parents[3]))
-    from src.cli.scripts._common import (  # type: ignore
-        DEFAULT_DATA_ROOT,
-        DEFAULT_OUTPUT_DIR,
-        COMMON_SUPPRESSION_VALUES,
-        detect_year,
-        iter_data_csv_files,
-        normalize_header,
-        read_header_and_sample,
-    )
+logger = logging.getLogger(__name__)
 
 DEFAULT_SAMPLE_ROWS = 200
 
@@ -83,6 +47,7 @@ class FileInventory:
 def summarize_file(csv_path: Path, sample_rows: int) -> Optional[FileInventory]:
     header, samples = read_header_and_sample(csv_path, sample_rows)
     if not header:
+        logger.warning("Skipping empty or malformed file: %s", csv_path)
         return None
 
     normalized_columns = [
@@ -99,10 +64,8 @@ def summarize_file(csv_path: Path, sample_rows: int) -> Optional[FileInventory]:
     suppression_tokens = sorted(
         {
             value
-            for col_idx, col_sample in enumerate(normalized_columns)
-            for value in (
-                row[col_idx] for row in samples if col_idx < len(row)
-            )
+            for col_idx, _ in enumerate(normalized_columns)
+            for value in (row[col_idx] for row in samples if col_idx < len(row))
             if value in COMMON_SUPPRESSION_VALUES
         }
     )
@@ -142,12 +105,11 @@ def run(root: Path, sample_rows: int, output_dir: Path) -> int:
     for csv_file in iter_data_csv_files(root):
         file_inventory = summarize_file(csv_file, sample_rows)
         if file_inventory is None:
-            print(f"Skipping empty or malformed file: {csv_file}", file=sys.stderr)
             continue
         inventories.append(file_inventory)
 
     if not inventories:
-        print("No data CSV files found.", file=sys.stderr)
+        logger.warning("No data CSV files found beneath %s", root)
         return 1
 
     column_variants = build_variants(inventories)
@@ -161,20 +123,18 @@ def run(root: Path, sample_rows: int, output_dir: Path) -> int:
     write_json(inventory_path, inventory_payload)
     write_json(variants_path, variants_payload)
 
-    print(f"Analyzed {len(inventories)} data files under {root}")
-    print(f"Inventory -> {inventory_path}")
-    print(f"Column variants -> {variants_path}")
-    print(f"Unique normalized columns: {len(column_variants)}")
+    logger.info("Analyzed %s data files under %s", len(inventories), root)
+    logger.info("Inventory -> %s", inventory_path)
+    logger.info("Column variants -> %s", variants_path)
+    logger.info("Unique normalized columns: %s", len(column_variants))
 
-    # Surface a quick report for manual inspection.
     most_common = sorted(
         column_variants.items(), key=lambda item: (-sum(item[1].values()), item[0])
     )[:10]
-    print("\nMost common columns:")
     for name, variants in most_common:
         total = sum(variants.values())
         sample_variant = max(variants.items(), key=lambda item: item[1])[0]
-        print(f"  {name} ({total} files) e.g. {sample_variant}")
+        logger.debug("%s (%s files) e.g. %s", name, total, sample_variant)
 
     uncommon = [
         (name, variants)
@@ -182,10 +142,9 @@ def run(root: Path, sample_rows: int, output_dir: Path) -> int:
         if sum(variants.values()) == 1
     ]
     if uncommon:
-        print("\nColumns that appear in only one file:")
         for name, variants in sorted(uncommon, key=lambda item: item[0])[:10]:
             variant = list(variants.keys())[0]
-            print(f"  {name} -> {variant}")
+            logger.debug("Rare column %s -> %s", name, variant)
 
     return 0
 
@@ -213,6 +172,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entrypoint
     args = parse_args()
-    sys.exit(run(args.root, args.sample_rows, args.output_dir))
+    raise SystemExit(run(args.root, args.sample_rows, args.output_dir))
