@@ -1,25 +1,13 @@
-"""
-Load standardized OEWS Parquet files into a SQLite database with tuned settings.
-
-Key features
-------------
-* Uses a producer/consumer pipeline so parquet decoding happens on multiple
-  threads while a dedicated writer performs batched inserts.
-* Applies SQLite performance pragmas (journal disabled, synchronous off,
-  exclusive locking) and wraps the migration in a single bulk transaction.
-* Tracks per-file metadata in the ``data_vintages`` table and reports progress
-  with a row-level progress bar.
-"""
-
-from __future__ import annotations
+"""Load standardized OEWS Parquet files into a SQLite database with tuned settings."""
 
 import argparse
-import datetime as dt
 import json
+import logging
 import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from enum import Enum
 from itertools import repeat
 from pathlib import Path
 from queue import Queue
@@ -30,75 +18,39 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm import tqdm
 
-try:
-    from ._common import DEFAULT_OUTPUT_DIR
-except ImportError:  # pragma: no cover - script entrypoint fallback
-    import sys
+from src import oews_schema
+from ._common import DEFAULT_OUTPUT_DIR
 
-    sys.path.append(str(Path(__file__).resolve().parents[3]))
-    from src.cli.scripts._common import DEFAULT_OUTPUT_DIR  # type: ignore
+logger = logging.getLogger(__name__)
 
 PARQUET_SUBDIR = "standardized"
 DB_FILENAME = "oews.db"
 DEFAULT_BATCH_SIZE = 50_000
 DEFAULT_WORKERS = max((os.cpu_count() or 4) - 1, 2)
 
-CANONICAL_COLUMNS = [
-    "AREA",
-    "AREA_TITLE",
-    "AREA_TYPE",
-    "PRIM_STATE",
-    "NAICS",
-    "NAICS_TITLE",
-    "I_GROUP",
-    "OWN_CODE",
-    "OCC_CODE",
-    "OCC_TITLE",
-    "O_GROUP",
-    "TOT_EMP",
-    "EMP_PRSE",
-    "JOBS_1000",
-    "LOC_QUOTIENT",
-    "PCT_TOTAL",
-    "PCT_RPT",
-    "H_MEAN",
-    "A_MEAN",
-    "MEAN_PRSE",
-    "H_PCT10",
-    "H_PCT25",
-    "H_MEDIAN",
-    "H_PCT75",
-    "H_PCT90",
-    "A_PCT10",
-    "A_PCT25",
-    "A_MEDIAN",
-    "A_PCT75",
-    "A_PCT90",
-    "ANNUAL",
-    "HOURLY",
-]
-
-METADATA_COLUMNS = ["_data_year", "_source_file", "_source_folder"]
-
-DB_COLUMNS = CANONICAL_COLUMNS + [
-    "SURVEY_YEAR",
-    "SURVEY_MONTH",
-    "SOURCE_FILE",
-    "SOURCE_FOLDER",
-]
+CANONICAL_COLUMNS = oews_schema.CANONICAL_COLUMNS
+METADATA_COLUMNS = oews_schema.METADATA_COLUMNS
+DB_COLUMNS = CANONICAL_COLUMNS + oews_schema.DB_EXTRA_COLUMNS
 
 
-@dataclass
+class MessageKind(str, Enum):
+    BATCH = "batch"
+    FILE_DONE = "file_done"
+    STOP = "stop"
+
+
+@dataclass(slots=True)
 class BatchMessage:
-    kind: str  # "batch", "file_done", "stop"
+    kind: MessageKind
     file_path: str
-    batch: Optional["pa.RecordBatch"] = None
+    batch: Optional[pa.RecordBatch] = None
     row_count: int = 0
 
 
 def load_standardization_report(parquet_root: Path) -> Dict[str, int]:
     report_path = parquet_root / "standardization_report.json"
     if not report_path.exists():
+        logger.debug("Standardization report not found at %s", report_path)
         return {}
     with report_path.open(encoding="utf-8") as fh:
         report = json.load(fh)
@@ -110,6 +62,7 @@ def load_standardization_report(parquet_root: Path) -> Dict[str, int]:
 
 def setup_database(db_path: Path) -> sqlite3.Connection:
     if db_path.exists():
+        logger.info("Replacing existing database at %s", db_path)
         db_path.unlink()
 
     conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -118,7 +71,7 @@ def setup_database(db_path: Path) -> sqlite3.Connection:
         "PRAGMA synchronous=OFF;",
         "PRAGMA temp_store=MEMORY;",
         "PRAGMA locking_mode=EXCLUSIVE;",
-        "PRAGMA cache_size=-64000;",  # negative => kibibytes in memory
+        "PRAGMA cache_size=-64000;",
     ]
     for pragma in pragmas:
         conn.execute(pragma)
@@ -194,17 +147,13 @@ def create_indexes(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
-def producer(
-    parquet_path: Path,
-    queue: Queue,
-    batch_size: int,
-) -> None:
+def producer(parquet_path: Path, queue: "Queue[BatchMessage]", batch_size: int) -> None:
     parquet_file = pq.ParquetFile(parquet_path)
     total_rows = 0
     for batch in parquet_file.iter_batches(batch_size=batch_size, use_threads=True):
-        queue.put(BatchMessage("batch", parquet_path.as_posix(), batch=batch))
+        queue.put(BatchMessage(MessageKind.BATCH, parquet_path.as_posix(), batch=batch))
         total_rows += batch.num_rows
-    queue.put(BatchMessage("file_done", parquet_path.as_posix(), row_count=total_rows))
+    queue.put(BatchMessage(MessageKind.FILE_DONE, parquet_path.as_posix(), row_count=total_rows))
 
 
 def first_non_null(values: Iterable[Optional[object]]) -> Optional[object]:
@@ -215,7 +164,7 @@ def first_non_null(values: Iterable[Optional[object]]) -> Optional[object]:
 
 
 def writer(
-    queue: Queue,
+    queue: "Queue[BatchMessage]",
     conn: sqlite3.Connection,
     progress: tqdm,
     file_stats: Dict[str, Dict[str, Optional[object]]],
@@ -227,16 +176,17 @@ def writer(
     cursor = conn.cursor()
 
     while True:
-        message: BatchMessage = queue.get()
-        if message.kind == "stop":
+        message = queue.get()
+        if message.kind is MessageKind.STOP:
             queue.task_done()
             break
 
-        if message.kind == "batch" and message.batch is not None:
+        if message.kind is MessageKind.BATCH and message.batch is not None:
             data = message.batch.to_pydict()
-            survey_years = data["_data_year"]
-            source_files = data["_source_file"]
-            source_folders = data["_source_folder"]
+            metadata = {name: data[name] for name in METADATA_COLUMNS}
+            survey_years = metadata["_data_year"]
+            source_files = metadata["_source_file"]
+            source_folders = metadata["_source_folder"]
 
             rows_iter = zip(
                 *(data[column] for column in CANONICAL_COLUMNS),
@@ -266,7 +216,7 @@ def writer(
             if stats["source_folder"] is None:
                 stats["source_folder"] = first_non_null(source_folders)
 
-        elif message.kind == "file_done":
+        elif message.kind is MessageKind.FILE_DONE:
             stats = file_stats.setdefault(
                 message.file_path,
                 {
@@ -290,7 +240,7 @@ def load_parquet_files(
     batch_size: int,
     expected_rows: Optional[int],
 ) -> Dict[str, Dict[str, Optional[object]]]:
-    queue: Queue = Queue(maxsize=workers * 2)
+    queue: "Queue[BatchMessage]" = Queue(maxsize=max(workers * 2, 4))
     file_stats: Dict[str, Dict[str, Optional[object]]] = {}
     progress = tqdm(total=expected_rows, unit="rows", desc="Loading to SQLite")
 
@@ -305,7 +255,7 @@ def load_parquet_files(
         for future in as_completed(futures):
             future.result()
 
-    queue.put(BatchMessage("stop", file_path=""))
+    queue.put(BatchMessage(MessageKind.STOP, file_path=""))
     queue.join()
     writer_thread.join()
     progress.close()
@@ -384,11 +334,14 @@ def run(parquet_root: Path, output_dir: Path, workers: int, batch_size: int) -> 
     conn.close()
 
     db_size_mb = db_path.stat().st_size / 1024 / 1024
-    print(f"\nDatabase created: {db_path}")
-    print(f"Size: {db_size_mb:.1f} MB")
-    print(
-        f"Rows: {summary['total_rows']:,} spanning {summary['min_year']} - {summary['max_year']} "
-        f"across {summary['files']} files"
+    logger.info("Database created: %s", db_path)
+    logger.info("Size: %.1f MB", db_size_mb)
+    logger.info(
+        "Rows: %s spanning %s - %s across %s files",
+        f"{summary['total_rows']:,}",
+        summary["min_year"],
+        summary["max_year"],
+        summary["files"],
     )
 
 
@@ -421,6 +374,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entrypoint
     args = parse_args()
     run(args.parquet_root, args.output_dir, args.workers, args.batch_size)

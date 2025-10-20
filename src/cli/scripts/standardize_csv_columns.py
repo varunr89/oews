@@ -1,20 +1,11 @@
-"""
-Normalize OEWS CSV files into a canonical schema and persist as Parquet.
-
-This script leverages Polars for high-throughput processing: each input CSV is
-transformed in parallel, column headers are harmonized, missing fields receive
-defaults, suppression tokens are coerced to nulls, and the result is written to
-``data/standardized/<folder>/<file>.parquet`` (by default).
-
-The accompanying ``standardization_report.json`` summarizes the work performed
-per file—renamed columns, additions, and any extra fields carried forward.
-"""
+"""Normalize OEWS CSV files into a canonical schema and persist as Parquet."""
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
 import json
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
@@ -24,153 +15,27 @@ from typing import Dict, Iterable, List, Optional
 import polars as pl
 from tqdm import tqdm
 
-try:
-    from ._common import (
-        DEFAULT_DATA_ROOT,
-        DEFAULT_OUTPUT_DIR,
-        COMMON_SUPPRESSION_VALUES,
-        detect_year,
-        iter_data_csv_files,
-        normalize_header,
-        read_header_and_sample,
-    )
-except ImportError:  # pragma: no cover - script entrypoint fallback
-    import sys
+from src import oews_schema
+from ._common import (
+    COMMON_SUPPRESSION_VALUES,
+    DEFAULT_DATA_ROOT,
+    DEFAULT_OUTPUT_DIR,
+    detect_year,
+    iter_data_csv_files,
+    normalize_header,
+    read_header_and_sample,
+)
 
-    sys.path.append(str(Path(__file__).resolve().parents[3]))
-    from src.cli.scripts._common import (  # type: ignore
-        DEFAULT_DATA_ROOT,
-        DEFAULT_OUTPUT_DIR,
-        COMMON_SUPPRESSION_VALUES,
-        detect_year,
-        iter_data_csv_files,
-        normalize_header,
-        read_header_and_sample,
-    )
+logger = logging.getLogger(__name__)
 
 OUTPUT_SUBDIR = "standardized"
 DEFAULT_WORKERS = max(os.cpu_count() or 4, 4)
 
-STANDARD_COLUMNS = [
-    "AREA",
-    "AREA_TITLE",
-    "AREA_TYPE",
-    "PRIM_STATE",
-    "NAICS",
-    "NAICS_TITLE",
-    "I_GROUP",
-    "OWN_CODE",
-    "OCC_CODE",
-    "OCC_TITLE",
-    "O_GROUP",
-    "TOT_EMP",
-    "EMP_PRSE",
-    "JOBS_1000",
-    "LOC_QUOTIENT",
-    "PCT_TOTAL",
-    "PCT_RPT",
-    "H_MEAN",
-    "A_MEAN",
-    "MEAN_PRSE",
-    "H_PCT10",
-    "H_PCT25",
-    "H_MEDIAN",
-    "H_PCT75",
-    "H_PCT90",
-    "A_PCT10",
-    "A_PCT25",
-    "A_MEDIAN",
-    "A_PCT75",
-    "A_PCT90",
-    "ANNUAL",
-    "HOURLY",
-]
-
-COLUMN_CANONICAL_MAP: Dict[str, str] = {
-    "area": "AREA",
-    "area_title": "AREA_TITLE",
-    "area_type": "AREA_TYPE",
-    "prim_state": "PRIM_STATE",
-    "primary_state": "PRIM_STATE",
-    "naics": "NAICS",
-    "naic": "NAICS",
-    "naics_title": "NAICS_TITLE",
-    "own_code": "OWN_CODE",
-    "ownership_code": "OWN_CODE",
-    "occ_code": "OCC_CODE",
-    "occ_code1": "OCC_CODE",
-    "occcode": "OCC_CODE",
-    "occ_title": "OCC_TITLE",
-    "occtitle": "OCC_TITLE",
-    "o_group": "O_GROUP",
-    "group": "O_GROUP",
-    "i_group": "I_GROUP",
-    "igroup": "I_GROUP",
-    "tot_emp": "TOT_EMP",
-    "total_emp": "TOT_EMP",
-    "emp_prse": "EMP_PRSE",
-    "jobs_1000": "JOBS_1000",
-    "jobs_1000_orig": "JOBS_1000",
-    "jobs_per_1000": "JOBS_1000",
-    "loc_quotient": "LOC_QUOTIENT",
-    "loc_quotiont": "LOC_QUOTIENT",
-    "loc_q": "LOC_QUOTIENT",
-    "pct_total": "PCT_TOTAL",
-    "pct_tot": "PCT_TOTAL",
-    "pcttotal": "PCT_TOTAL",
-    "pct_rpt": "PCT_RPT",
-    "percent_reporting": "PCT_RPT",
-    "h_mean": "H_MEAN",
-    "hourly_mean": "H_MEAN",
-    "a_mean": "A_MEAN",
-    "annual_mean": "A_MEAN",
-    "mean_prse": "MEAN_PRSE",
-    "h_pct10": "H_PCT10",
-    "h_pct25": "H_PCT25",
-    "h_median": "H_MEDIAN",
-    "h_pct75": "H_PCT75",
-    "h_pct90": "H_PCT90",
-    "a_pct10": "A_PCT10",
-    "a_pct25": "A_PCT25",
-    "a_median": "A_MEDIAN",
-    "a_pct75": "A_PCT75",
-    "a_pct90": "A_PCT90",
-    "annual": "ANNUAL",
-    "hourly": "HOURLY",
-}
-
-# Defaults for columns that may not exist in older vintages.
-DEFAULT_COLUMN_VALUES: Dict[str, Optional[str]] = {
-    "I_GROUP": "cross-industry",
-    "PRIM_STATE": None,
-    "PCT_RPT": None,
-}
-
-# Numeric columns that need coercion after renaming.
-NUMERIC_COLUMN_TYPES = {
-    "AREA_TYPE": pl.Int16,
-    "TOT_EMP": pl.Int64,
-    "EMP_PRSE": pl.Float64,
-    "JOBS_1000": pl.Float64,
-    "LOC_QUOTIENT": pl.Float64,
-    "PCT_TOTAL": pl.Float64,
-    "PCT_RPT": pl.Float64,
-    "H_MEAN": pl.Float64,
-    "A_MEAN": pl.Float64,
-    "MEAN_PRSE": pl.Float64,
-    "H_PCT10": pl.Float64,
-    "H_PCT25": pl.Float64,
-    "H_MEDIAN": pl.Float64,
-    "H_PCT75": pl.Float64,
-    "H_PCT90": pl.Float64,
-    "A_PCT10": pl.Float64,
-    "A_PCT25": pl.Float64,
-    "A_MEDIAN": pl.Float64,
-    "A_PCT75": pl.Float64,
-    "A_PCT90": pl.Float64,
-}
-
-METADATA_COLUMNS = ["_source_file", "_source_folder", "_data_year"]
+CANONICAL_COLUMNS = oews_schema.CANONICAL_COLUMNS
+COLUMN_CANONICAL_MAP = oews_schema.COLUMN_CANONICAL_MAP
+DEFAULT_COLUMN_VALUES = oews_schema.COLUMN_DEFAULTS
+NUMERIC_COLUMN_TYPES = oews_schema.POLARS_NUMERIC_TYPES
+METADATA_COLUMNS = oews_schema.METADATA_COLUMNS
 
 
 @dataclass
@@ -186,7 +51,7 @@ class StandardizationResult:
     year: Optional[int] = None
 
 
-def build_rename_plan(columns: Iterable[str]):
+def build_rename_plan(columns: Iterable[str]) -> tuple[Dict[str, str], Dict[str, List[str]], List[str]]:
     rename_map: Dict[str, str] = {}
     duplicates: Dict[str, List[str]] = {}
     drop_columns: List[str] = []
@@ -209,8 +74,7 @@ def build_rename_plan(columns: Iterable[str]):
     return rename_map, duplicates, drop_columns
 
 
-def sanitize_numeric_column(column: str, dtype: pl.DataType) -> pl.Expr:
-    # Convert to string for suppression detection, then back to numeric dtype.
+def sanitize_numeric_column(column: str, dtype: "pl.DataType") -> pl.Expr:
     sentinel_values = list(COMMON_SUPPRESSION_VALUES)
     str_col = pl.col(column).cast(pl.Utf8).str.strip_chars()
     return (
@@ -245,7 +109,7 @@ def standardize_file(csv_path: Path, output_root: Path) -> StandardizationResult
 
     missing_exprs = []
     missing_columns = []
-    for column in STANDARD_COLUMNS:
+    for column in CANONICAL_COLUMNS:
         if column not in df.columns:
             missing_columns.append(column)
             default_value = DEFAULT_COLUMN_VALUES.get(column)
@@ -272,7 +136,7 @@ def standardize_file(csv_path: Path, output_root: Path) -> StandardizationResult
         ]
     )
 
-    canonical_order = [col for col in STANDARD_COLUMNS if col in df.columns]
+    canonical_order = [col for col in CANONICAL_COLUMNS if col in df.columns]
     extra_columns = [
         col for col in df.columns if col not in canonical_order and col not in METADATA_COLUMNS
     ]
@@ -300,7 +164,7 @@ def standardize_file(csv_path: Path, output_root: Path) -> StandardizationResult
 def run(root: Path, output_dir: Path, workers: int) -> int:
     csv_files = list(iter_data_csv_files(root))
     if not csv_files:
-        print(f"No CSV files found under {root}")
+        logger.warning("No CSV files found under %s", root)
         return 1
 
     target_root = output_dir / OUTPUT_SUBDIR
@@ -322,6 +186,7 @@ def run(root: Path, output_dir: Path, workers: int) -> int:
                 results.append(result)
             except Exception as exc:  # pragma: no cover - logging path
                 errors.append({"file": str(csv_path), "error": str(exc)})
+                logger.exception("Failed to standardize %s", csv_path)
 
     report = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -330,6 +195,7 @@ def run(root: Path, output_dir: Path, workers: int) -> int:
         "files_processed": len(results),
         "files_failed": len(errors),
         "total_rows": sum(r.rows for r in results),
+        "schema_version": oews_schema.SCHEMA_VERSION,
         "results": [asdict(r) for r in sorted(results, key=lambda r: r.source_file)],
         "errors": errors,
     }
@@ -338,13 +204,12 @@ def run(root: Path, output_dir: Path, workers: int) -> int:
     with report_path.open("w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)
 
-    print(f"Wrote standardized parquet files to {target_root}")
-    print(f"Report -> {report_path}")
+    logger.info("Wrote standardized parquet files to %s", target_root)
+    logger.info("Report -> %s", report_path)
 
     if errors:
-        print("\nEncountered errors:")
         for error in errors:
-            print(f"  {error['file']}: {error['error']}")
+            logger.error("%s: %s", error["file"], error["error"])
         return 1
 
     return 0
@@ -373,7 +238,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entrypoint
     args = parse_args()
     exit_code = run(args.root, args.output_dir, args.workers)
     raise SystemExit(exit_code)

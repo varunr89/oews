@@ -1,56 +1,66 @@
-# OEWS Data Agent
+# OEWS Data Pipeline
 
-A public data agent capable of answering questions based on Bureau of Labor Statistics (BLS) Occupational Employment and Wage Statistics (OEWS) data.
+A data pipeline for processing and migrating BLS Occupational Employment and Wage Statistics (OEWS) data from Excel sources to SQL databases (SQLite/PostgreSQL), with planned support for Azure SQL Serverless deployment.
 
 ## Overview
 
-This project provides a comprehensive solution for migrating BLS OEWS data from Excel files to a SQL database and building an intelligent data agent on top of it. The system handles data discovery, schema normalization, migration, and validation to make OEWS data accessible and queryable.
+This project provides a multi-stage pipeline for processing BLS OEWS data:
+1. **Excel to CSV conversion** - Extract data from Excel workbooks
+2. **Column analysis** - Inspect and document schema across files
+3. **Schema standardization** - Normalize column names and types across the dataset
+4. **Database migration** - Load standardized data into SQLite or PostgreSQL databases
+5. **Cloud deployment** - (Planned) Deploy local SQLite databases to Azure SQL Serverless
 
 ## Features
 
-- **Automated Data Discovery**: Scan directories for OEWS Excel files
-- **Schema Analysis**: Automatically analyze and normalize column schemas across multiple Excel files
-- **Data Migration**: Migrate Excel data to SQL database (SQLite/PostgreSQL)
-- **Data Validation**: Built-in consistency checks and validation reports
-- **CLI Tools**: Command-line interface for all operations
-- **Interactive UI**: Streamlit-based interface for data exploration and analysis
+✅ **Implemented:**
+- **Batch CSV Processing**: Efficiently convert Excel files to CSV format
+- **Schema Analysis**: Scan raw CSV headers and generate diagnostic reports
+- **Column Standardization**: Normalize column names and data types across heterogeneous sources
+- **High-Performance Migration**: Multi-threaded SQLite/PostgreSQL data loading with configurable batch sizes
+- **BLS Data Download**: Utility to download data directly from BLS API
+- **Command-Line Interface**: Comprehensive CLI for pipeline orchestration
+- **Progress Tracking**: Real-time progress bars for long-running operations
+
+🚧 **Planned:**
+- **Azure SQL Integration**: Deploy SQLite databases to Azure SQL Serverless
+- **Data Validation**: Consistency checks between source and target databases
+- **Interactive UI**: Streamlit-based interface for data exploration
 
 ## Project Structure
 
 ```
-.
-├── src/
-│   ├── cli/                # Command-line interface
-│   │   ├── commands.py     # CLI commands
-│   │   ├── config.py       # CLI configuration
-│   │   └── scripts/        # Migration and analysis scripts
-│   ├── database/           # Database management
-│   │   ├── connection.py   # Database connections
-│   │   ├── models.py       # SQLAlchemy models
-│   │   ├── loader.py       # Data loading utilities
-│   │   └── schema.py       # Schema definitions
-│   ├── models/             # Data models
-│   │   ├── excel_file.py
-│   │   ├── migration_record.py
-│   │   ├── validation_report.py
-│   │   └── unified_schema.py
-│   ├── services/           # Core services
-│   │   ├── file_discovery.py    # File discovery service
-│   │   ├── migration_engine.py  # Data migration engine
-│   │   ├── schema_analyzer.py   # Schema analysis
-│   │   ├── schema_builder.py    # Schema construction
-│   │   └── validator.py         # Data validation
-│   └── lib/                # Shared utilities
-├── tests/                  # Test suite
-├── requirements.txt        # Python dependencies
-└── pyproject.toml         # Project metadata
-
+src/
+├── cli/
+│   └── scripts/                    # Core pipeline scripts
+│       ├── oews_pipeline.py        # Main pipeline orchestrator (analyze → standardize → migrate)
+│       ├── analyze_columns.py      # CSV header analysis and diagnostics
+│       ├── standardize_csv_columns.py  # Column name/type normalization
+│       ├── migrate_csv_to_db.py    # Database loading (SQLite/PostgreSQL)
+│       ├── excel_to_csv.py         # Excel to CSV batch conversion
+│       ├── download_bls_data.py    # BLS API data download utility
+│       └── _common.py              # Shared utilities
+tests/                             # Test suite
+data/                              # Data directories
+├── csv/                           # Raw CSV files
+├── standardized/                  # Normalized parquet files
+└── oews.db                        # SQLite database (generated)
+alembic/                           # Database migration scripts (for PostgreSQL)
+specs/                             # Feature specifications
+├── 001-interactive-data-filtering/
+├── 002-i-want-to/
+└── 003-hosted-sql-db/             # Azure SQL deployment spec (in progress)
+requirements.txt                   # Python dependencies
+pyproject.toml                     # Project metadata and build config
+.env.template                      # Environment configuration template
 ```
 
 ## Requirements
 
 - Python 3.10+
-- SQLite or PostgreSQL
+- SQLite (for local database) or PostgreSQL (optional, for production databases)
+- For BLS data download: Internet connection
+- For Azure deployment (future): Azure CLI and active Azure subscription
 
 ## Installation
 
@@ -71,77 +81,63 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
+4. (Optional) Set up environment variables:
 ```bash
 cp .env.template .env
-# Edit .env with your configuration
+# Edit .env to customize batch sizes, logging, Azure region, etc.
 ```
 
 ## Usage
 
-### Data Migration
+### Running the Full Pipeline
 
-1. **Run the full pipeline (analyze → standardize → migrate)**:
+The complete data processing pipeline in one command:
+
 ```bash
 python -m src.cli.scripts.oews_pipeline all
 ```
 
-   This command inspects the raw CSV headers under `data/csv`, writes
-   standardized parquet files to `data/standardized`, and materializes a
-   `data/oews.db` SQLite database ready for analytics.
+This orchestrates three stages:
+1. **Analyze**: Inspects raw CSV headers under `data/csv/`
+2. **Standardize**: Normalizes columns and writes parquet files to `data/standardized/`
+3. **Migrate**: Loads standardized data into `data/oews.db` (SQLite)
 
-2. **Run individual stages (optional)**:
+### Running Individual Stages
+
 ```bash
-# Column inventory + diagnostics
+# Stage 1: Analyze CSV headers and document schema
 python -m src.cli.scripts.oews_pipeline analyze --sample-rows 50
 
-# Column standardization to parquet (uses Polars + multithreading)
+# Stage 2: Standardize columns to parquet (multi-threaded)
 python -m src.cli.scripts.oews_pipeline standardize --workers 4
 
-# SQLite migration with batched inserts and tuned pragmas
+# Stage 3: Migrate parquet data into SQLite with batched inserts
 python -m src.cli.scripts.oews_pipeline migrate --workers 4 --batch-size 50000
 ```
 
-### Database Management
+### Converting Excel Files to CSV
 
 ```bash
-# Initialize database
-python manage_db.py init
+python -m src.cli.scripts.excel_to_csv [excel_directory] [output_directory]
+```
 
-# Run migrations
+### Downloading Data from BLS
+
+```bash
+python -m src.cli.scripts.download_bls_data [output_directory]
+```
+
+### Database Setup for PostgreSQL (Optional)
+
+For production deployments using PostgreSQL with Alembic migrations:
+
+```bash
+# Initialize schema
 alembic upgrade head
+
+# Create new migration
+alembic revision --autogenerate -m "description"
 ```
-
-### Interactive UI
-
-```bash
-streamlit run app.py
-```
-
-### Azure SQL Deployment
-
-The hosted SQL deployment workflow provisions Azure resources, migrates a local
-SQLite database, and validates the results. Ensure you have the Azure CLI
-installed and authenticated via `az login` before running the command below.
-
-```bash
-# Deploy a local SQLite database to Azure SQL Serverless
-python -m src.cli.main deploy-azure data/oews.db
-```
-
-The CLI performs the following steps:
-
-1. Validates the `.env` configuration and source database file.
-2. Verifies the current Azure CLI session and required permissions.
-3. Creates an Azure resource group, SQL server, and serverless database.
-4. Extracts the SQLite schema, converts it to T-SQL, and applies it to Azure.
-5. Transfers data in batches with progress updates.
-6. Runs post-migration validation (row counts and sample hashing) and writes a
-   JSON report to `logs/validation_report_<job_id>.json`.
-
-Deployment logs are stored under `logs/azure-deployment.log`. No credentials or
-access tokens are written to the log file—sensitive values are redacted to
-comply with SR-001.
 
 ## Data Source
 
@@ -154,38 +150,60 @@ Learn more: [BLS OEWS](https://www.bls.gov/oes/)
 ### Running Tests
 
 ```bash
-cd src
-pytest
+cd src && pytest
 ```
+
+This runs the test suite with coverage reporting (requires 90%+ coverage to pass).
 
 ### Code Quality
 
 ```bash
-# Linting
+# Linting with Ruff
 ruff check .
 
-# Formatting
+# Code formatting with Black
 black .
+
+# Type checking with mypy
+mypy src --strict
 ```
 
 ## Architecture
 
-The system follows a service-oriented architecture:
+The pipeline follows a staged data transformation approach:
 
-1. **File Discovery Service**: Scans and catalogs Excel files
-2. **Schema Analyzer**: Analyzes column structures across files
-3. **Schema Builder**: Creates unified schema definitions
-4. **Migration Engine**: Handles data transformation and loading
-5. **Validator**: Performs data consistency checks
+1. **Input Stage**: Excel files or CSV data in `data/csv/`
+2. **Analysis Stage**: `analyze_columns.py` - Scans CSV headers, documents schema inconsistencies
+3. **Standardization Stage**: `standardize_csv_columns.py` - Normalizes column names/types, outputs parquet
+4. **Migration Stage**: `migrate_csv_to_db.py` - Loads standardized data into SQLite/PostgreSQL
+5. **Output**: Queryable SQL database ready for analytics
+
+Key performance optimizations:
+- Multi-threaded processing (configurable worker count)
+- Polars for fast CSV processing (10-100x faster than pandas)
+- Batched database inserts (configurable batch size)
+- Progress tracking with TQDM
 
 ## Roadmap
 
-- [x] Excel to SQL migration pipeline
-- [x] Data validation and consistency checks
+**Implemented (002-i-want-to):**
+- [x] Excel to CSV conversion
+- [x] CSV column analysis and schema documentation
+- [x] Column standardization and parquet output
+- [x] SQLite/PostgreSQL database migration
+- [x] Multi-threaded batch processing
+- [x] BLS data download utility
+
+**In Progress (003-hosted-sql-db):**
+- [ ] Azure SQL Serverless deployment
+- [ ] Data validation between source and target
+- [ ] Deployment automation and rollback
+
+**Planned (001-interactive-data-filtering):**
+- [ ] Interactive web UI for data exploration
 - [ ] Natural language query interface
 - [ ] Advanced analytics and visualizations
-- [ ] API endpoints for data access
-- [ ] Multi-source data integration
+- [ ] Data validation reporting dashboard
 
 ## Contributing
 
@@ -198,7 +216,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Acknowledgments
 
 - Bureau of Labor Statistics for providing the OEWS data
-- Built with Python, pandas, SQLAlchemy, and Streamlit
+- Built with Python 3.10+, Polars, SQLAlchemy, Click, and Alembic
+- High-performance Excel processing via fastexcel and openpyxl
+- Progress tracking with TQDM
 
 ## Contact
 
