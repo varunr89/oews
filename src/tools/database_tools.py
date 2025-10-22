@@ -85,6 +85,9 @@ def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
     SECURITY: This tool REQUIRES parameterized queries.
     All user inputs MUST be passed via the params argument as a JSON string.
 
+    For large result sets (>1000 rows), returns a summary with first 10 rows
+    instead of the full dataset to prevent memory issues.
+
     Returns JSON string with columns, data, row count, and SQL query.
 
     Args:
@@ -92,7 +95,7 @@ def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
         params: Optional JSON string of parameters (e.g., '["Seattle", 10]')
 
     Returns:
-        JSON string with query results
+        JSON string with query results or summary
 
     Example:
         execute_sql_query(
@@ -113,15 +116,48 @@ def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
         df = db.execute_query(sql, params=params_tuple)
         db.close()
 
-        result = {
-            "success": True,
-            "columns": df.columns.tolist(),
-            "data": df.values.tolist(),
-            "row_count": len(df),
-            "sql": sql,
-            "params": params
-        }
+        row_count = len(df)
+
+        # Handle large result sets
+        if row_count > 1000:
+            # Return summary instead of full data
+            result = {
+                "success": True,
+                "truncated": True,
+                "summary": (
+                    f"Query returned {row_count:,} rows (showing first 10). "
+                    f"Full dataset available in agent memory for analysis."
+                ),
+                "columns": df.columns.tolist(),
+                "sample_data": df.head(10).values.tolist(),
+                "row_count": row_count,
+                "sql": sql,
+                "params": params,
+                "stats": {
+                    # Provide statistics for numeric columns
+                    col: {
+                        "min": float(df[col].min()),
+                        "max": float(df[col].max()),
+                        "mean": float(df[col].mean()),
+                        "median": float(df[col].median())
+                    }
+                    for col in df.select_dtypes(include=['number']).columns[:5]
+                }
+            }
+        else:
+            # Return full data for small results
+            result = {
+                "success": True,
+                "truncated": False,
+                "columns": df.columns.tolist(),
+                "data": df.values.tolist(),
+                "row_count": row_count,
+                "sql": sql,
+                "params": params
+            }
+
         return json.dumps(result, indent=2)
+
     except Exception as e:
         result = {
             "success": False,
