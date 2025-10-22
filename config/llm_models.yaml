@@ -1,0 +1,70 @@
+# LLM Model Registry Configuration
+# Edit this file to add/remove models or change defaults
+
+defaults:
+  reasoning: deepseek-r1
+  implementation: deepseek-v3
+  fast: deepseek-v3
+
+features:
+  enable_model_tracking: true
+  enable_cost_tracking: false
+
+models:
+  # Reasoning Models (for Planner/Executor)
+  deepseek-r1:
+    provider: azure_ai
+    model_name: DeepSeek-R1-0528
+    role: reasoning
+    temperature: 0.0
+    response_format:
+      type: json_object
+    api_key_env: AZURE_AI_API_KEY
+    endpoint_env: AZURE_AI_ENDPOINT
+    cost_per_1m_tokens: 0.55
+    avg_latency_ms: 3000
+    context_window: 64000
+
+  gpt-4o:
+    provider: openai
+    model_name: gpt-4o
+    role: reasoning
+    temperature: 0.0
+    response_format:
+      type: json_object
+    api_key_env: OPENAI_API_KEY
+    cost_per_1m_tokens: 2.50
+    avg_latency_ms: 2000
+    context_window: 128000
+
+  # Implementation Models (for Agents)
+  deepseek-v3:
+    provider: azure_ai
+    model_name: DeepSeek-V3-0324
+    role: implementation
+    temperature: 0.0
+    api_key_env: AZURE_AI_API_KEY
+    endpoint_env: AZURE_AI_ENDPOINT
+    cost_per_1m_tokens: 0.27
+    avg_latency_ms: 1500
+    context_window: 64000
+
+  gpt-4o-mini:
+    provider: openai
+    model_name: gpt-4o-mini
+    role: implementation
+    temperature: 0.0
+    api_key_env: OPENAI_API_KEY
+    cost_per_1m_tokens: 0.15
+    avg_latency_ms: 800
+    context_window: 128000
+
+  # Local Testing
+  ollama-llama3:
+    provider: ollama
+    model_name: llama3
+    role: implementation
+    temperature: 0.0
+    endpoint_env: OLLAMA_BASE_URL
+    cost_per_1m_tokens: 0.0
+    context_window: 8192
