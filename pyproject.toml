@@ -19,7 +19,11 @@ dependencies = [
     "tqdm>=4.65.0",
     "pyyaml>=6.0.0",
     "pydantic>=2.0.0",
-    "sqlalchemy>=2.0.0"
+    "sqlalchemy>=2.0.0",
+    "langchain>=0.1.0",
+    "langchain-openai>=0.0.5",
+    "langchain-anthropic>=0.1.0",
+    "langchain-community>=0.0.20"
 ]
 
 [project.optional-dependencies]
