@@ -8,6 +8,7 @@ from .llm_config import (
     load_registry_from_yaml,
     get_default_registry
 )
+from .llm_factory import LLMFactory, llm_factory
 
 __all__ = [
     "ModelConfig",
@@ -15,5 +16,7 @@ __all__ = [
     "ModelProvider",
     "LLMRegistry",
     "load_registry_from_yaml",
-    "get_default_registry"
+    "get_default_registry",
+    "LLMFactory",
+    "llm_factory"
 ]
