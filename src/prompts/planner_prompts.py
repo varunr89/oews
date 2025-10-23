@@ -1,7 +1,7 @@
 """Planner prompt templates."""
 
 from typing import Dict, Any
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 
 
 def get_agent_descriptions() -> Dict[str, str]:

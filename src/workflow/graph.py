@@ -12,7 +12,7 @@ from src.agents.chart_generator import create_chart_generator_agent
 def cortex_researcher_node(state: State):
     """Wrapper for Text2SQL agent."""
     from langgraph.types import Command
-    from langchain.schema import AIMessage
+    from langchain_core.messages import AIMessage
 
     agent = create_text2sql_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
@@ -38,7 +38,7 @@ def cortex_researcher_node(state: State):
 def chart_generator_node(state: State):
     """Wrapper for Chart Generator agent."""
     from langgraph.types import Command
-    from langchain.schema import AIMessage
+    from langchain_core.messages import AIMessage
 
     agent = create_chart_generator_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
@@ -63,7 +63,7 @@ def chart_generator_node(state: State):
 def chart_summarizer_node(state: State):
     """Describe charts in natural language."""
     from langgraph.types import Command
-    from langchain.schema import AIMessage
+    from langchain_core.messages import AIMessage
 
     # Extract chart specs from last message
     messages = state.get("messages", [])
@@ -93,7 +93,7 @@ def chart_summarizer_node(state: State):
 def synthesizer_node(state: State):
     """Create text summary of all findings."""
     from langgraph.types import Command
-    from langchain.schema import AIMessage, HumanMessage
+    from langchain_core.messages import AIMessage, HumanMessage
     from src.config.llm_factory import llm_factory
 
     # Get implementation model
@@ -140,7 +140,7 @@ Focus on key insights and actionable information.
 def web_researcher_node(state: State):
     """Placeholder for web research agent."""
     from langgraph.types import Command
-    from langchain.schema import AIMessage
+    from langchain_core.messages import AIMessage
 
     # TODO: Implement web research using Tavily or similar
     response = "Web research not yet implemented."

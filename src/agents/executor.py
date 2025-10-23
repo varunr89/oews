@@ -2,7 +2,7 @@
 
 from typing import Literal, Union
 from langgraph.types import Command
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 from src.agents.state import State
 from src.prompts.executor_prompts import (
     build_agent_query,
