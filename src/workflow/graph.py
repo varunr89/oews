@@ -138,16 +138,27 @@ Focus on key insights and actionable information.
 
 
 def web_researcher_node(state: State):
-    """Placeholder for web research agent."""
+    """Web research agent for external data."""
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
+    from src.agents.web_research_agent import create_web_research_agent
 
-    # TODO: Implement web research using Tavily or similar
-    response = "Web research not yet implemented."
+    agent = create_web_research_agent()
+    agent_query = state.get("agent_query", state.get("user_query", ""))
+
+    # Run agent
+    result = agent.invoke({"messages": [{"role": "user", "content": agent_query}]})
+
+    final_message = result["messages"][-1] if result.get("messages") else None
+    response_content = final_message.content if final_message else "No results from web research."
 
     return Command(
         update={
-            "messages": [AIMessage(content=response, name="web_researcher")]
+            "messages": [AIMessage(content=response_content, name="web_researcher")],
+            "model_usage": {
+                **(state.get("model_usage") or {}),
+                "web_researcher": state.get("implementation_model_override") or "deepseek-v3"
+            }
         },
         goto="executor"
     )
