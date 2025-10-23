@@ -1,66 +1,58 @@
 """Chart Generator Agent for creating visualizations."""
 
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.prompts import PromptTemplate
-from langchain_core.tools import tool
+from typing import Dict, Any
+import json
 from src.config.llm_factory import llm_factory
 
 
-@tool
-def create_bar_chart(title: str, data: str) -> str:
+def create_chart_generator_agent():
     """
-    Create a bar chart specification.
-
-    Args:
-        title: Chart title
-        data: JSON string with chart data
+    Create a simple chart generator agent.
 
     Returns:
-        Chart specification marker
-    """
-    import json
-    chart_spec = {
-        "type": "bar",
-        "title": title,
-        "data": json.loads(data) if isinstance(data, str) else data
-    }
-    return f"CHART_SPEC: {json.dumps(chart_spec)}"
-
-
-CHART_PROMPT = """You are a chart generation agent. Create chart specifications from data.
-
-Available tools:
-{tools}
-
-Format:
-Question: the input
-Thought: think about chart type
-Action: create_bar_chart
-Action Input: {{"title": "...", "data": "..."}}
-Observation: chart created
-Final Answer: description of chart
-
-Question: {input}
-{agent_scratchpad}
-"""
-
-
-def create_chart_generator_agent() -> AgentExecutor:
-    """
-    Create agent for generating charts.
-
-    Returns:
-        AgentExecutor instance
+        Callable agent function
     """
     llm = llm_factory.get_implementation()
-    tools = [create_bar_chart]
-    prompt = PromptTemplate.from_template(CHART_PROMPT)
-    agent = create_react_agent(llm, tools, prompt)
 
-    return AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True,
-        max_iterations=5,
-        handle_parsing_errors=True
-    )
+    def invoke(input_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate chart specifications from data."""
+        messages = input_dict.get("messages", [])
+        query = messages[0].get("content", "") if messages else ""
+
+        try:
+            # Create a prompt for chart generation
+            prompt = f"""You are a chart generation agent. Create a bar chart specification from the data.
+
+Question: {query}
+
+Generate a JSON chart specification with this format:
+{{
+  "type": "bar",
+  "title": "Chart Title",
+  "data": {{
+    "labels": ["Label1", "Label2"],
+    "values": [value1, value2]
+  }}
+}}
+
+Return ONLY the JSON specification wrapped in CHART_SPEC markers like this:
+CHART_SPEC: {{"type": "bar", ...}}
+"""
+
+            from langchain_core.messages import HumanMessage
+            response = llm.invoke([HumanMessage(content=prompt)])
+
+            return {
+                "messages": [{"role": "assistant", "content": response.content}]
+            }
+
+        except Exception as e:
+            return {
+                "messages": [{"role": "assistant", "content": f"Error generating chart: {str(e)}"}]
+            }
+
+    class SimpleAgent:
+        def __init__(self, invoke_fn):
+            self.invoke = invoke_fn
+
+    return SimpleAgent(invoke)

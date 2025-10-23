@@ -2,7 +2,7 @@
 
 from typing import Literal
 from langgraph.types import Command
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 from src.config.llm_factory import llm_factory
 from src.prompts.planner_prompts import plan_prompt
 from src.agents.state import State

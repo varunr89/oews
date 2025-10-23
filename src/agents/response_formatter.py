@@ -4,7 +4,7 @@ import json
 import re
 from typing import Dict, Any, List
 from langgraph.types import Command
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 from src.agents.state import State
 
 

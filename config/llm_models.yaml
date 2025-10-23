@@ -19,8 +19,8 @@ models:
     temperature: 0.0
     response_format:
       type: json_object
-    api_key_env: AZURE_AI_API_KEY
-    endpoint_env: AZURE_AI_ENDPOINT
+    api_key_env: AZURE_INFERENCE_CREDENTIAL
+    endpoint_env: AZURE_INFERENCE_ENDPOINT
     cost_per_1m_tokens: 0.55
     avg_latency_ms: 3000
     context_window: 64000
@@ -43,8 +43,8 @@ models:
     model_name: DeepSeek-V3-0324
     role: implementation
     temperature: 0.0
-    api_key_env: AZURE_AI_API_KEY
-    endpoint_env: AZURE_AI_ENDPOINT
+    api_key_env: AZURE_INFERENCE_CREDENTIAL
+    endpoint_env: AZURE_INFERENCE_ENDPOINT
     cost_per_1m_tokens: 0.27
     avg_latency_ms: 1500
     context_window: 64000

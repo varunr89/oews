@@ -2,9 +2,12 @@
 
 import uvicorn
 import os
+from dotenv import load_dotenv
 
 
 def main():
+    # Load environment variables from .env file
+    load_dotenv()
     """Start the FastAPI server."""
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", "8000"))
