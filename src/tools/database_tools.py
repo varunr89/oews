@@ -194,24 +194,28 @@ def search_areas(search_term: str) -> List[str]:
     Searches for geographic areas matching the search term.
 
     SECURITY: Uses parameterized queries to prevent SQL injection.
+    ENHANCEMENT: Uses fuzzy matching for typo correction.
 
-    Example: search_areas("Bellingham") returns
-    ["Bellingham, WA Metropolitan Statistical Area"]
-
-    Use this to find exact AREA_TITLE values for filtering.
+    Example: search_areas("Seatle") returns Seattle areas despite typo
 
     Args:
         search_term: Text to search for in area names
 
     Returns:
-        List of matching area names
+        List of matching area names (up to 20, sorted by relevance)
     """
     import json
+    from src.utils.fuzzy_matching import fuzzy_match_area
 
-    # SECURE: Use parameterized query with ? placeholder
+    # First try fuzzy matching for better results
+    fuzzy_matches = fuzzy_match_area(search_term, limit=20)
+
+    if fuzzy_matches:
+        # Return fuzzy match results (already sorted by relevance)
+        return [match["name"] for match in fuzzy_matches]
+
+    # Fallback to SQL LIKE search
     sql = "SELECT DISTINCT AREA_TITLE FROM oews_data WHERE AREA_TITLE LIKE ? LIMIT 20"
-
-    # Wildcard % must be part of the parameter value, not the SQL string
     search_param = f"%{search_term}%"
 
     result_str = execute_sql_query.invoke({
@@ -221,7 +225,6 @@ def search_areas(search_term: str) -> List[str]:
     result = json.loads(result_str)
 
     if result.get("success"):
-        # Extract first column (AREA_TITLE) from each row
         return [row[0] for row in result["data"]]
     return []
 
@@ -232,24 +235,27 @@ def search_occupations(search_term: str) -> List[str]:
     Searches for occupations matching the search term.
 
     SECURITY: Uses parameterized queries to prevent SQL injection.
+    ENHANCEMENT: Uses fuzzy matching for alternative names.
 
-    Example: search_occupations("software") returns
-    ["Software Developers", "Software Quality Assurance Analysts", ...]
-
-    Use this to find exact OCC_TITLE values.
+    Example: search_occupations("programmer") returns "Software Developers"
 
     Args:
         search_term: Text to search for in occupation names
 
     Returns:
-        List of matching occupation names
+        List of matching occupation names (up to 20, sorted by relevance)
     """
     import json
+    from src.utils.fuzzy_matching import fuzzy_match_occupation
 
-    # SECURE: Use parameterized query with ? placeholder
+    # First try fuzzy matching
+    fuzzy_matches = fuzzy_match_occupation(search_term, limit=20)
+
+    if fuzzy_matches:
+        return [match["name"] for match in fuzzy_matches]
+
+    # Fallback to SQL LIKE search
     sql = "SELECT DISTINCT OCC_TITLE FROM oews_data WHERE OCC_TITLE LIKE ? LIMIT 20"
-
-    # Wildcard % must be part of the parameter value
     search_param = f"%{search_term}%"
 
     result_str = execute_sql_query.invoke({
@@ -259,6 +265,5 @@ def search_occupations(search_term: str) -> List[str]:
     result = json.loads(result_str)
 
     if result.get("success"):
-        # Extract first column (OCC_TITLE) from each row
         return [row[0] for row in result["data"]]
     return []
