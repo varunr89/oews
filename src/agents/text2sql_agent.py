@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 
 from src.config.llm_factory import llm_factory
+from src.utils.logger import setup_workflow_logger
 from src.tools.database_tools import (
     get_schema_info,
     validate_sql,
@@ -12,6 +13,8 @@ from src.tools.database_tools import (
     search_areas,
     search_occupations
 )
+
+logger = setup_workflow_logger("oews.workflow.text2sql")
 
 
 SYSTEM_PROMPT = """You are a Text2SQL expert agent. Your job is to answer questions about OEWS employment data by:
@@ -92,9 +95,24 @@ def _create_simple_agent(llm):
         messages = input_dict.get("messages", [])
         query = messages[0].get("content", "") if messages else ""
 
+        # LOG: Agent input
+        logger.debug("agent_input", extra={
+            "data": {
+                "query": query,
+                "messages_count": len(messages)
+            }
+        })
+
         try:
             # Get schema
             schema = tools["get_schema_info"].invoke({})
+
+            # LOG: Schema retrieved
+            logger.debug("schema_retrieved", extra={
+                "data": {
+                    "schema_length": len(schema)
+                }
+            })
 
             # Create a prompt for the LLM
             prompt = f"""{SYSTEM_PROMPT}
@@ -109,8 +127,37 @@ Generate a SQL query to answer this question. Return ONLY the SQL query."""
             response = llm.invoke([HumanMessage(content=prompt)])
             sql_query = response.content.strip()
 
+            # LOG: SQL generated
+            logger.debug("sql_generated", extra={
+                "data": {
+                    "sql": sql_query,
+                    "sql_length": len(sql_query)
+                }
+            })
+
             # Execute the query
             result = tools["execute_sql_query"].invoke({"sql": sql_query})
+
+            # Parse result to get row count
+            import json
+            try:
+                result_data = json.loads(result)
+                row_count = result_data.get("row_count", 0)
+                success = result_data.get("success", False)
+
+                # LOG: Query results
+                logger.debug("query_results", extra={
+                    "data": {
+                        "success": success,
+                        "row_count": row_count,
+                        "result_preview": result[:200] + "..." if len(result) > 200 else result
+                    }
+                })
+
+            except json.JSONDecodeError:
+                logger.warning("result_parse_error", extra={
+                    "data": {"result": result[:200]}
+                })
 
             return {
                 "messages": [AIMessage(content=f"Query result: {result}")],
@@ -118,6 +165,14 @@ Generate a SQL query to answer this question. Return ONLY the SQL query."""
             }
 
         except Exception as e:
+            # LOG: Error
+            logger.error("agent_error", extra={
+                "data": {
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+            })
+
             return {
                 "messages": [AIMessage(content=f"Error: {str(e)}")],
                 "intermediate_steps": []
