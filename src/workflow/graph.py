@@ -13,15 +13,36 @@ def cortex_researcher_node(state: State):
     """Wrapper for Text2SQL agent."""
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
+    from src.utils.logger import setup_workflow_logger
+
+    logger = setup_workflow_logger("oews.workflow.cortex_researcher")
 
     agent = create_text2sql_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
-    # Run agent
-    result = agent.invoke({"input": agent_query})
+    # Run agent with correct input format
+    result = agent.invoke({"messages": [{"role": "user", "content": agent_query}]})
 
-    # Extract final answer
-    response_content = result.get("output", "No result")
+    # LOG: Agent result structure
+    logger.debug("agent_result", extra={
+        "data": {
+            "result_keys": list(result.keys()) if isinstance(result, dict) else "not a dict",
+            "result_type": str(type(result)),
+            "result_preview": str(result)[:500]
+        }
+    })
+
+    # Extract final answer from messages
+    if isinstance(result, dict) and "messages" in result:
+        messages = result["messages"]
+        if messages and len(messages) > 0:
+            last_msg = messages[-1]
+            response_content = last_msg.content if hasattr(last_msg, 'content') else str(last_msg)
+        else:
+            response_content = "No messages in result"
+    else:
+        # Fallback to output key
+        response_content = result.get("output", "No result")
 
     return Command(
         update={
