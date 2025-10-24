@@ -6,7 +6,10 @@ from langchain_core.messages import HumanMessage
 from src.config.llm_factory import llm_factory
 from src.prompts.planner_prompts import plan_prompt
 from src.agents.state import State
+from src.utils.logger import setup_workflow_logger
 import json
+
+logger = setup_workflow_logger()
 
 
 def planner_node(state: State) -> Command[Literal['executor']]:
@@ -21,6 +24,16 @@ def planner_node(state: State) -> Command[Literal['executor']]:
     Returns:
         Command to route to executor
     """
+    user_query = state.get("user_query", state.get("messages", [{}])[0].content if state.get("messages") else "")
+
+    # LOG: Input query
+    logger.debug("planner_input", extra={
+        "data": {
+            "user_query": user_query,
+            "enabled_agents": state.get("enabled_agents", [])
+        }
+    })
+
     # Get reasoning model from factory
     reasoning_llm = llm_factory.get_reasoning()
 
@@ -58,7 +71,21 @@ def planner_node(state: State) -> Command[Literal['executor']]:
         json_str = content_str[start_idx:json_end_idx]
         parsed_plan = json.loads(json_str)
 
+        # LOG: Generated plan
+        logger.debug("planner_output", extra={
+            "data": {
+                "plan": parsed_plan,
+                "steps": len(parsed_plan)
+            }
+        })
+
     except json.JSONDecodeError as e:
+        logger.error("planner_parse_error", extra={
+            "data": {
+                "error": str(e),
+                "content": llm_reply.content[:200] if hasattr(llm_reply, 'content') else ""
+            }
+        })
         # Fallback to simple plan
         parsed_plan = {
             "1": {"agent": "cortex_researcher", "action": "Query database"},

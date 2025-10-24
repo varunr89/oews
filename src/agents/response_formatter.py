@@ -6,6 +6,9 @@ from typing import Dict, Any, List
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage
 from src.agents.state import State
+from src.utils.logger import setup_workflow_logger
+
+logger = setup_workflow_logger()
 
 
 def response_formatter_node(state: State) -> Command:
@@ -76,6 +79,16 @@ def response_formatter_node(state: State) -> Command:
             "replans": state.get("replans", 0)
         }
     }
+
+    # LOG: Final response
+    logger.debug("response_formatter_output", extra={
+        "data": {
+            "answer_length": len(formatted_response.get("answer", "")),
+            "charts_count": len(formatted_response.get("charts", [])),
+            "data_sources_count": len(formatted_response.get("data_sources", [])),
+            "models_used": formatted_response.get("metadata", {}).get("models_used", {})
+        }
+    })
 
     return Command(
         update={

@@ -4,12 +4,15 @@ from typing import Literal, Union
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage
 from src.agents.state import State
+from src.utils.logger import setup_workflow_logger
 from src.prompts.executor_prompts import (
     build_agent_query,
     should_replan,
     is_step_complete,
     is_plan_complete
 )
+
+logger = setup_workflow_logger()
 
 
 def executor_node(
@@ -45,10 +48,26 @@ def executor_node(
     Returns:
         Command to route to next node
     """
+    # LOG: Current state
+    logger.debug("executor_state", extra={
+        "data": {
+            "current_step": state.get("current_step", 1),
+            "replan_flag": state.get("replan_flag", False),
+            "plan_steps": len(state.get("plan", {}))
+        }
+    })
 
     # 1. Check if we need to replan
     if should_replan(state):
         replans = state.get("replans", 0)
+
+        logger.debug("executor_routing", extra={
+            "data": {
+                "decision": "replan",
+                "replans": replans + 1,
+                "reason": "replan_flag set"
+            }
+        })
 
         return Command(
             update={
@@ -93,6 +112,17 @@ def executor_node(
     # 4. Route to the agent for current step
     target_agent = plan[step_key]["agent"]
     agent_query = build_agent_query(state)
+
+    # LOG: Routing decision
+    logger.debug("executor_routing", extra={
+        "data": {
+            "decision": "route_to_agent",
+            "target_agent": target_agent,
+            "step": current_step,
+            "total_steps": len(plan),
+            "agent_query": agent_query[:100] + "..." if len(agent_query) > 100 else agent_query
+        }
+    })
 
     # Map agent names to valid node names
     agent_mapping = {
