@@ -4,6 +4,9 @@ from typing import Dict, Any, List, Optional
 from langchain_core.tools import tool
 from src.database.connection import OEWSDatabase
 from src.database.schema import get_oews_schema_description, get_table_list
+from src.utils.logger import setup_workflow_logger
+
+logger = setup_workflow_logger("oews.workflow.tools")
 
 
 @tool
@@ -105,6 +108,15 @@ def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
     """
     import json
 
+    # LOG: SQL execution start
+    logger.debug("sql_execution_start", extra={
+        "data": {
+            "sql": sql,
+            "params": params,
+            "has_params": params is not None
+        }
+    })
+
     try:
         # Parse params if provided
         params_tuple = None
@@ -112,11 +124,27 @@ def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
             params_list = json.loads(params)
             params_tuple = tuple(params_list)
 
+            logger.debug("sql_params_parsed", extra={
+                "data": {
+                    "params_count": len(params_list),
+                    "params": params_list
+                }
+            })
+
         db = OEWSDatabase()
         df = db.execute_query(sql, params=params_tuple)
         db.close()
 
         row_count = len(df)
+
+        # LOG: Query success
+        logger.debug("sql_execution_success", extra={
+            "data": {
+                "row_count": row_count,
+                "columns": df.columns.tolist() if row_count > 0 else [],
+                "sample_data": df.head(3).to_dict('records') if row_count > 0 else []
+            }
+        })
 
         # Handle large result sets
         if row_count > 1000:
@@ -159,6 +187,16 @@ def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
         return json.dumps(result, indent=2)
 
     except Exception as e:
+        # LOG: Query error
+        logger.error("sql_execution_error", extra={
+            "data": {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "sql": sql,
+                "params": params
+            }
+        })
+
         result = {
             "success": False,
             "error": str(e),
@@ -207,14 +245,30 @@ def search_areas(search_term: str) -> List[str]:
     import json
     from src.utils.fuzzy_matching import fuzzy_match_area
 
+    # LOG: Search start
+    logger.debug("search_areas_start", extra={
+        "data": {"search_term": search_term}
+    })
+
     # First try fuzzy matching for better results
     fuzzy_matches = fuzzy_match_area(search_term, limit=20)
 
     if fuzzy_matches:
+        # LOG: Fuzzy matches found
+        logger.debug("search_areas_fuzzy_match", extra={
+            "data": {
+                "matches_count": len(fuzzy_matches),
+                "top_match": fuzzy_matches[0] if fuzzy_matches else None
+            }
+        })
         # Return fuzzy match results (already sorted by relevance)
         return [match["name"] for match in fuzzy_matches]
 
     # Fallback to SQL LIKE search
+    logger.debug("search_areas_sql_fallback", extra={
+        "data": {"reason": "no_fuzzy_matches"}
+    })
+
     sql = "SELECT DISTINCT AREA_TITLE FROM oews_data WHERE AREA_TITLE LIKE ? LIMIT 20"
     search_param = f"%{search_term}%"
 
@@ -248,13 +302,29 @@ def search_occupations(search_term: str) -> List[str]:
     import json
     from src.utils.fuzzy_matching import fuzzy_match_occupation
 
+    # LOG: Search start
+    logger.debug("search_occupations_start", extra={
+        "data": {"search_term": search_term}
+    })
+
     # First try fuzzy matching
     fuzzy_matches = fuzzy_match_occupation(search_term, limit=20)
 
     if fuzzy_matches:
+        # LOG: Fuzzy matches found
+        logger.debug("search_occupations_fuzzy_match", extra={
+            "data": {
+                "matches_count": len(fuzzy_matches),
+                "top_match": fuzzy_matches[0] if fuzzy_matches else None
+            }
+        })
         return [match["name"] for match in fuzzy_matches]
 
     # Fallback to SQL LIKE search
+    logger.debug("search_occupations_sql_fallback", extra={
+        "data": {"reason": "no_fuzzy_matches"}
+    })
+
     sql = "SELECT DISTINCT OCC_TITLE FROM oews_data WHERE OCC_TITLE LIKE ? LIMIT 20"
     search_param = f"%{search_term}%"
 
