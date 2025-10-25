@@ -111,7 +111,19 @@ def executor_node(
 
     # 4. Route to the agent for current step
     target_agent = plan[step_key]["agent"]
-    agent_query = build_agent_query(state)
+
+    # LOG: DIAGNOSTIC - Check state vs local variable mismatch
+    logger.debug("executor_step_comparison", extra={
+        "data": {
+            "local_current_step": current_step,
+            "state_current_step": state.get("current_step", 1),
+            "target_agent": target_agent,
+            "expected_action": plan[step_key].get("action", "")
+        }
+    })
+
+    # Pass the incremented current_step explicitly to avoid state mismatch
+    agent_query = build_agent_query(state, current_step=current_step)
 
     # LOG: Routing decision
     logger.debug("executor_routing", extra={
