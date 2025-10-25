@@ -65,10 +65,17 @@ def setup_workflow_logger(name: str = "oews.workflow") -> logging.Logger:
         backupCount=5
     )
 
+    # Disable buffering for immediate writes
+    handler.setLevel(logging.DEBUG)
+    handler.flush = lambda: handler.stream.flush() if hasattr(handler, 'stream') and handler.stream else None
+
     # Set JSON formatter
     handler.setFormatter(JsonFormatter())
 
     # Add handler to logger
     logger.addHandler(handler)
+
+    # Force immediate flush after each log
+    logger.handlers[0].flush()
 
     return logger
