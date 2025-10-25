@@ -40,6 +40,18 @@ def response_formatter_node(state: State) -> Command:
 
     # Extract charts
     charts = []
+
+    # LOG: Debug chart extraction
+    logger.debug("extracting_charts", extra={
+        "data": {
+            "message_count": len(messages),
+            "chart_messages": [
+                {"name": getattr(msg, "name", "unknown"), "has_chart_spec": "CHART_SPEC" in msg.content if hasattr(msg, "content") else False}
+                for msg in messages if hasattr(msg, "name") and getattr(msg, "name", "") in ["chart_generator", "chart_summarizer"]
+            ]
+        }
+    })
+
     for msg in messages:
         if hasattr(msg, 'content') and "CHART_SPEC" in msg.content:
             # Extract JSON from CHART_SPEC markers

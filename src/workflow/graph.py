@@ -60,14 +60,40 @@ def chart_generator_node(state: State):
     """Wrapper for Chart Generator agent."""
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
+    from src.utils.logger import setup_workflow_logger
+
+    logger = setup_workflow_logger("oews.workflow.chart_generator")
 
     agent = create_chart_generator_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
-    # Run agent
-    result = agent.invoke({"input": agent_query})
+    # Run agent with standard message payload
+    result = agent.invoke({
+        "messages": [{"role": "user", "content": agent_query}]
+    })
 
-    response_content = result.get("output", "No charts generated")
+    # LOG: Agent result
+    logger.debug("agent_result", extra={
+        "data": {
+            "result_keys": list(result.keys()) if isinstance(result, dict) else "not a dict",
+            "result_type": str(type(result))
+        }
+    })
+
+    response_content = "No charts generated"
+
+    if isinstance(result, dict):
+        messages = result.get("messages") or []
+        if messages:
+            last_msg = messages[-1]
+            if isinstance(last_msg, dict):
+                response_content = last_msg.get("content", response_content)
+            elif hasattr(last_msg, "content"):
+                response_content = getattr(last_msg, "content", response_content)
+        elif "output" in result:
+            response_content = result.get("output", response_content)
+    elif hasattr(result, "content"):
+        response_content = getattr(result, "content", response_content)
 
     return Command(
         update={

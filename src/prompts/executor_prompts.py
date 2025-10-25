@@ -90,7 +90,13 @@ def is_step_complete(state) -> bool:
 
     # Check if last message is from expected agent
     last_msg = messages[-1]
-    return hasattr(last_msg, 'name') and last_msg.name == expected_agent
+    if hasattr(last_msg, "name"):
+        if last_msg.name == expected_agent:
+            return True
+        if expected_agent == "chart_generator" and last_msg.name == "chart_summarizer":
+            return True
+
+    return False
 
 
 def is_plan_complete(state) -> bool:

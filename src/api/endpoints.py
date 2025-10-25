@@ -16,10 +16,14 @@ from src.api.models import (
     ErrorResponse
 )
 from src.workflow.graph import create_workflow_graph
+from src.utils.logger import setup_workflow_logger
 
 
 # Global workflow graph instance
 workflow_graph = None
+
+# Initialize logger for API diagnostics
+api_logger = setup_workflow_logger("oews.api")
 
 
 @asynccontextmanager
@@ -106,6 +110,15 @@ async def query(request: QueryRequest) -> QueryResponse:
     # Record start time
     start_time = time.time()
 
+    # DIAGNOSTIC: Test if logging works in API process
+    api_logger.debug("query_received", extra={
+        "data": {
+            "query": request.query[:100],
+            "enable_charts": request.enable_charts,
+            "cwd": os.getcwd()
+        }
+    })
+
     try:
         # Prepare initial state
         enabled_agents = ["cortex_researcher", "synthesizer"]
@@ -121,7 +134,16 @@ async def query(request: QueryRequest) -> QueryResponse:
         }
 
         # Invoke workflow
-        result = workflow_graph.invoke(initial_state)
+        # Invoke with high recursion limit for debugging
+        # Force flush API log
+        import logging
+        for handler in api_logger.handlers:
+            handler.flush()
+
+        result = workflow_graph.invoke(
+            initial_state,
+            config={"recursion_limit": 100}
+        )
 
         # Extract formatted response
         formatted = result.get("formatted_response", {})
