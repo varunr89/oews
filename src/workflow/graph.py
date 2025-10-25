@@ -20,6 +20,16 @@ def cortex_researcher_node(state: State):
     agent = create_text2sql_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
+    # LOG: DIAGNOSTIC - Show what query cortex_researcher receives
+    logger.debug("cortex_researcher_input", extra={
+        "data": {
+            "agent_query_from_state": state.get("agent_query", "NOT SET"),
+            "user_query_from_state": state.get("user_query", ""),
+            "current_step_from_state": state.get("current_step", 1),
+            "actual_query_used": agent_query[:200] + "..." if len(agent_query) > 200 else agent_query
+        }
+    })
+
     # Run agent with correct input format
     result = agent.invoke({"messages": [{"role": "user", "content": agent_query}]})
 

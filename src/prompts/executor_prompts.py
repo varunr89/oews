@@ -3,7 +3,7 @@
 from typing import Dict, Any
 
 
-def build_agent_query(state) -> str:
+def build_agent_query(state, current_step: int = None) -> str:
     """
     Build the query string to send to the current agent.
 
@@ -12,19 +12,41 @@ def build_agent_query(state) -> str:
 
     Args:
         state: Current workflow state
+        current_step: Optional override for current step (if not provided, reads from state)
 
     Returns:
         Query string for the agent
     """
+    from src.utils.logger import setup_workflow_logger
+    logger = setup_workflow_logger("oews.workflow.executor_prompts")
+
     plan = state.get("plan", {})
-    current_step = state.get("current_step", 1)
+    # Use provided current_step if available, otherwise read from state
+    if current_step is None:
+        current_step = state.get("current_step", 1)
 
     step_key = str(current_step)
     if step_key not in plan:
+        logger.debug("build_agent_query_fallback", extra={
+            "data": {
+                "current_step": current_step,
+                "reason": "step_key not in plan",
+                "returning": "user_query"
+            }
+        })
         return state.get("user_query", "")
 
     step = plan[step_key]
     action = step.get("action", "")
+
+    # LOG: DIAGNOSTIC - Show what step we're building query for
+    logger.debug("build_agent_query", extra={
+        "data": {
+            "current_step_from_state": current_step,
+            "building_for_agent": step.get("agent", "unknown"),
+            "action": action[:100] + "..." if len(action) > 100 else action
+        }
+    })
 
     # Build context-aware query
     user_query = state.get("user_query", "")
