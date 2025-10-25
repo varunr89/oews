@@ -55,9 +55,15 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# For development: Allow GitHub Spark and local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js default port
+    allow_origins=[
+        "http://localhost:3000",           # Next.js local
+        "https://*.github.io",             # GitHub Pages (Spark)
+        "https://microsoftedge-spark.github.io",  # GitHub Spark
+        "*"  # Allow all for development (TODO: restrict in production)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
