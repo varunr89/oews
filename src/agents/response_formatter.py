@@ -53,15 +53,48 @@ def response_formatter_node(state: State) -> Command:
     })
 
     for msg in messages:
-        if hasattr(msg, 'content') and "CHART_SPEC" in msg.content:
+        # Only extract charts from chart_summarizer (it has the preserved CHART_SPEC)
+        if hasattr(msg, 'name') and msg.name == "chart_summarizer" and hasattr(msg, 'content') and "CHART_SPEC" in msg.content:
             # Extract JSON from CHART_SPEC markers
-            chart_matches = re.findall(r'CHART_SPEC:\s*({.*?})', msg.content, re.DOTALL)
-            for chart_json in chart_matches:
-                try:
-                    chart_spec = json.loads(chart_json)
-                    charts.append(chart_spec)
-                except json.JSONDecodeError:
-                    pass
+            # Use a more robust approach: find "CHART_SPEC:" then parse JSON from that position
+            content = msg.content
+            chart_start = 0
+            while True:
+                chart_start = content.find("CHART_SPEC:", chart_start)
+                if chart_start == -1:
+                    break
+
+                # Find the JSON object starting position
+                json_start = content.find("{", chart_start)
+                if json_start == -1:
+                    break
+
+                # Extract JSON by counting braces
+                brace_count = 0
+                json_end = json_start
+                for i in range(json_start, len(content)):
+                    if content[i] == '{':
+                        brace_count += 1
+                    elif content[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = i + 1
+                            break
+
+                if brace_count == 0:  # Found complete JSON
+                    chart_json = content[json_start:json_end]
+                    try:
+                        chart_spec = json.loads(chart_json)
+                        # Add unique ID if not present
+                        if 'id' not in chart_spec:
+                            chart_spec['id'] = f"chart_{len(charts) + 1}"
+                        charts.append(chart_spec)
+                    except json.JSONDecodeError as e:
+                        logger.warning("chart_json_parse_error", extra={
+                            "data": {"error": str(e), "json_preview": chart_json[:200]}
+                        })
+
+                chart_start = json_end if json_end > json_start else chart_start + 1
 
     # Extract data sources
     data_sources = []

@@ -118,7 +118,7 @@ def chart_generator_node(state: State):
 
 
 def chart_summarizer_node(state: State):
-    """Describe charts in natural language."""
+    """Describe charts in natural language and preserve CHART_SPEC markers."""
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
 
@@ -128,6 +128,7 @@ def chart_summarizer_node(state: State):
 
     if not last_msg or "CHART_SPEC" not in last_msg.content:
         summary = "No charts were generated."
+        content = summary
     else:
         # Simple extraction of chart type
         import re
@@ -139,9 +140,13 @@ def chart_summarizer_node(state: State):
         else:
             summary = "Generated charts (details in message)."
 
+        # CRITICAL: Preserve the original message content with CHART_SPEC markers
+        # Append the summary but keep the CHART_SPEC data for response_formatter
+        content = f"{summary}\n\n{last_msg.content}"
+
     return Command(
         update={
-            "messages": [AIMessage(content=summary, name="chart_summarizer")]
+            "messages": [AIMessage(content=content, name="chart_summarizer")]
         },
         goto="executor"
     )

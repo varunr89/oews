@@ -21,22 +21,39 @@ def create_chart_generator_agent():
 
         try:
             # Create a prompt for chart generation
-            prompt = f"""You are a chart generation agent. Create a bar chart specification from the data.
+            prompt = f"""You are a chart generation agent. Analyze the previous agent outputs and create appropriate chart specifications.
 
 Question: {query}
 
-Generate a JSON chart specification with this format:
+Generate a JSON chart specification with this EXACT format:
 {{
-  "type": "bar",
-  "title": "Chart Title",
+  "type": "bar|line|scatter",
+  "title": "Descriptive Chart Title",
   "data": {{
-    "labels": ["Label1", "Label2"],
-    "values": [value1, value2]
+    "labels": ["X-axis Label1", "X-axis Label2", "..."],
+    "datasets": [
+      {{
+        "name": "Dataset Name",
+        "values": [number1, number2, ...]
+      }}
+    ]
+  }},
+  "options": {{
+    "xAxis": {{"title": "X Axis Label"}},
+    "yAxis": {{"title": "Y Axis Label"}}
   }}
 }}
 
-Return ONLY the JSON specification wrapped in CHART_SPEC markers like this:
-CHART_SPEC: {{"type": "bar", ...}}
+IMPORTANT:
+- Use "name" (not "label") for dataset names
+- Use "values" (not "data") for dataset values
+- Choose appropriate chart type: bar, line, or scatter
+- Include multiple datasets for comparisons
+- Return ONLY the JSON specification wrapped in CHART_SPEC markers like this:
+
+CHART_SPEC: {{"type": "bar", "title": "...", ...}}
+
+DO NOT include explanatory text, ONLY output the CHART_SPEC line with valid JSON.
 """
 
             from langchain_core.messages import HumanMessage
