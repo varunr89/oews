@@ -56,8 +56,11 @@ Return **ONLY** valid JSON (no markdown, no explanations) in this form:
 Guidelines:
 - Use `cortex_researcher` for OEWS database queries (employment, wages, occupations)
 - Use `web_researcher` for external data (population, news, trends)
-- Use `chart_generator` ONLY if user explicitly requests charts/visualizations
-- Use `synthesizer` as final step for text summaries
+- Use `chart_generator` when user requests charts/visualizations/graphs
+- **ALWAYS use `synthesizer` as the final step** to provide detailed text analysis
+- When charts are generated, synthesizer should explain insights, trends, and key takeaways from the visualization
+
+CRITICAL: Every plan MUST end with a `synthesizer` step to provide comprehensive written analysis.
 
 User query: "{user_query}"
 """
