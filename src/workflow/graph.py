@@ -171,7 +171,33 @@ def synthesizer_node(state: State):
         if hasattr(msg, 'name') and msg.name in ["cortex_researcher", "web_researcher", "chart_summarizer"]
     ])
 
-    prompt = f"""
+    # Check if charts were generated
+    has_charts = any(
+        hasattr(msg, 'name') and msg.name == "chart_summarizer"
+        for msg in messages
+    )
+
+    if has_charts:
+        prompt = f"""
+You are the Synthesizer agent. Create a comprehensive written analysis to accompany the visualizations.
+
+User Query: {user_query}
+
+Agent Outputs:
+{context}
+
+Since charts/visualizations were generated, provide a DETAILED written analysis (3-5 paragraphs) that:
+
+1. **Summarizes the key findings** - What does the data show? What are the main takeaways?
+2. **Explains trends and patterns** - What trends are visible? How do values compare across categories/time?
+3. **Highlights important insights** - What are the notable differences, outliers, or significant patterns?
+4. **Provides context** - Why do these patterns matter? What do they tell us about the topic?
+5. **Answers the user's question directly** - Address the specific comparison or analysis they requested
+
+Be specific with numbers, percentages, and concrete comparisons. Make the text analysis valuable even without looking at the chart.
+"""
+    else:
+        prompt = f"""
 You are the Synthesizer agent. Create a concise text summary of the findings.
 
 User Query: {user_query}
@@ -179,8 +205,8 @@ User Query: {user_query}
 Agent Outputs:
 {context}
 
-Provide a 2-3 sentence summary that directly answers the user's question.
-Focus on key insights and actionable information.
+Provide a clear, informative summary (2-4 sentences) that directly answers the user's question.
+Focus on key insights and actionable information with specific numbers and data points.
 """
 
     # Invoke LLM
