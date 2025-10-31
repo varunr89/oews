@@ -260,6 +260,7 @@ def web_researcher_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.agents.web_research_agent import create_web_research_agent
+    import json
 
     agent = create_web_research_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
@@ -269,6 +270,40 @@ def web_researcher_node(state: State):
 
     final_message = result["messages"][-1] if result.get("messages") else None
     response_content = final_message.content if final_message else "No results from web research."
+
+    # Extract search traces from intermediate_steps
+    search_traces = []
+    intermediate_steps = result.get("intermediate_steps", [])
+
+    for action, observation in intermediate_steps:
+        # Check if this is a search tool call
+        if hasattr(action, 'tool') and 'search' in action.tool.lower():
+            try:
+                search_query = action.tool_input.get("query", "")
+
+                # Parse observation for sources
+                # Tavily returns JSON with results array
+                obs_data = json.loads(observation) if isinstance(observation, str) else observation
+
+                sources = []
+                if isinstance(obs_data, dict) and "results" in obs_data:
+                    for item in obs_data["results"][:5]:  # Top 5 sources
+                        sources.append({
+                            "url": item.get("url", ""),
+                            "title": item.get("title", ""),
+                            "snippet": item.get("content", "")[:200]  # First 200 chars
+                        })
+
+                search_traces.append({
+                    "search_query": search_query,
+                    "sources": sources
+                })
+            except (json.JSONDecodeError, AttributeError, KeyError):
+                continue
+
+    # Add EXECUTION_TRACE if we have traces
+    if search_traces:
+        response_content = f"{response_content}\n\nEXECUTION_TRACE: {json.dumps(search_traces)}"
 
     return Command(
         update={
