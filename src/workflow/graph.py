@@ -14,6 +14,8 @@ def cortex_researcher_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.utils.logger import setup_workflow_logger
+    from src.utils.trace_utils import build_sql_trace
+    import json
 
     logger = setup_workflow_logger("oews.workflow.cortex_researcher")
 
@@ -51,8 +53,36 @@ def cortex_researcher_node(state: State):
         else:
             response_content = "No messages in result"
     else:
-        # Fallback to output key
         response_content = result.get("output", "No result")
+
+    # Extract SQL execution traces from intermediate_steps
+    sql_traces = []
+    intermediate_steps = result.get("intermediate_steps", [])
+
+    for action, observation in intermediate_steps:
+        # Check if this is an execute_sql_query tool call
+        if hasattr(action, 'tool') and action.tool == "execute_sql_query":
+            try:
+                # Extract SQL and params from action
+                sql = action.tool_input.get("sql", "")
+                params_str = action.tool_input.get("params", "[]")
+                params = json.loads(params_str) if params_str else []
+
+                # Parse observation for results
+                result_data = json.loads(observation) if isinstance(observation, str) else observation
+
+                if result_data.get("success"):
+                    rows = result_data.get("results", [])
+                    sql_traces.append(build_sql_trace(sql, params, rows))
+            except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                logger.warning("sql_trace_extraction_error", extra={
+                    "data": {"error": str(e)}
+                })
+                continue
+
+    # Add EXECUTION_TRACE to message content if we have traces
+    if sql_traces:
+        response_content = f"{response_content}\n\nEXECUTION_TRACE: {json.dumps(sql_traces)}"
 
     return Command(
         update={
