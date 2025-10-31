@@ -56,11 +56,27 @@ class ChartSpec(BaseModel):
 
 
 class DataSource(BaseModel):
-    """Metadata about a data source used in the response."""
+    """Execution trace for an agent action."""
 
-    name: str = Field(..., description="Data source name")
-    sql_query: Optional[str] = Field(None, description="SQL query executed (if applicable)")
+    step: int = Field(..., description="Step number in execution sequence")
+    agent: str = Field(..., description="Agent that performed this action")
+    type: str = Field(..., description="Type of action (planning, oews_database, web_search)")
+    action: Optional[str] = Field(None, description="Human-readable description of action")
+
+    # Planning-specific fields
+    plan: Optional[Dict[str, Any]] = Field(None, description="Generated execution plan")
+    reasoning_model: Optional[str] = Field(None, description="Model used for reasoning")
+
+    # SQL-specific fields
+    sql: Optional[str] = Field(None, description="SQL query executed")
+    params: Optional[List[Any]] = Field(None, description="Query parameters")
     row_count: Optional[int] = Field(None, description="Number of rows returned")
+    sample_data: Optional[List[Dict[str, Any]]] = Field(None, description="Sample result rows")
+    stats: Optional[Dict[str, Any]] = Field(None, description="Column statistics (min/max/avg)")
+
+    # Web search-specific fields
+    search_query: Optional[str] = Field(None, description="Search query executed")
+    sources: Optional[List[Dict[str, Any]]] = Field(None, description="Web sources found")
 
 
 class Metadata(BaseModel):
