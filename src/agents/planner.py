@@ -98,7 +98,7 @@ def planner_node(state: State) -> Command[Literal['executor']]:
         update={
             "plan": parsed_plan,
             "messages": [HumanMessage(
-                content=json.dumps(parsed_plan),
+                content=f"{json.dumps(parsed_plan)}\n\nEXECUTION_TRACE: {json.dumps({'plan': parsed_plan, 'reasoning_model': model_key, 'steps': len(parsed_plan)})}",
                 name="replan" if replan else "initial_plan"
             )],
             "user_query": state.get("user_query", state.get("messages", [{}])[0].content if state.get("messages") else ""),
