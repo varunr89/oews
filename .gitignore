@@ -102,3 +102,10 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# Deployment secrets
+docker-config.json
+
+# Caddy data (volumes)
+caddy_data/
+caddy_config/
