@@ -56,11 +56,21 @@ app = FastAPI(
 
 # Add CORS middleware
 # Get frontend origins from environment (comma-separated)
-frontend_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+frontend_origins = [origin.strip() for origin in cors_origins_str.split(",")]
+
+# Convert GitHub Pages wildcard to regex pattern if present
+import re
+allow_origin_regex = None
+if any("*.github.io" in origin for origin in frontend_origins):
+    # Remove wildcard entry and add regex pattern
+    frontend_origins = [o for o in frontend_origins if "*.github.io" not in o]
+    allow_origin_regex = r"https://.*\.github\.io"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=frontend_origins,  # Specific origins only (not wildcard)
+    allow_origins=frontend_origins,  # Specific origins only
+    allow_origin_regex=allow_origin_regex,  # Regex for GitHub Pages wildcard
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
