@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  oews-api:
+    image: ghcr.io/varunr89/oews-api:latest
+    container_name: oews-api
+    restart: unless-stopped
+    # No port mapping needed - Caddy uses Docker network
+    env_file:
+      - .env
+    volumes:
+      - ./data/oews.db:/app/data/oews.db:ro  # Read-only bind mount
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      oews-api:
+        condition: service_healthy  # Wait for API to be healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-config.json:/config.json:ro  # GHCR credentials
+    command: --interval 86400 --cleanup  # Daily, for base image updates only
+    environment:
+      - WATCHTOWER_NOTIFICATIONS=${WATCHTOWER_URL}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:
