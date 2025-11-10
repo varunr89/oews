@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  oews-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oews-api-local
+    ports:
+      - "8000:8000"  # Expose port for local testing
+    env_file:
+      - .env
+    environment:
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+    volumes:
+      - ./data/oews.db:/app/data/oews.db:ro  # Read-only bind mount
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

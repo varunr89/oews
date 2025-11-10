@@ -14,8 +14,9 @@
    - `SERVER_USER`: SSH username
    - `SSH_PRIVATE_KEY`: Private key from setup script
    - `SSH_HOST_FINGERPRINT`: Host fingerprint from setup script
-   - `AZURE_AI_API_KEY`: Your Azure AI API key
-   - `OPENAI_API_KEY`: Your OpenAI API key
+   - `AZURE_INFERENCE_ENDPOINT`: Your Azure OpenAI endpoint URL
+   - `AZURE_INFERENCE_CREDENTIAL`: Your Azure OpenAI API key
+   - `TAVILY_API_KEY`: Your Tavily API key
    - `CORS_ORIGINS`: Frontend domains (comma-separated, e.g., `https://app.bhavanaai.com,http://localhost:3000`)
 
 3. **Copy files to server:**
