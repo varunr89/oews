@@ -9,7 +9,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data/oews.db:/app/data/oews.db:ro  # Read-only bind mount
+      - ./data:/app/data  # Mount entire data directory (SQLite needs WAL files)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

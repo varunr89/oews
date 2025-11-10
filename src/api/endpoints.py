@@ -63,9 +63,10 @@ frontend_origins = [origin.strip() for origin in cors_origins_str.split(",")]
 import re
 allow_origin_regex = None
 if any("*.github.io" in origin for origin in frontend_origins):
-    # Remove wildcard entry and add regex pattern
+    # Remove wildcard entry and add ANCHORED regex pattern
+    # SECURITY: Anchored pattern prevents https://github.io.attacker.com bypass
     frontend_origins = [o for o in frontend_origins if "*.github.io" not in o]
-    allow_origin_regex = r"https://.*\.github\.io"
+    allow_origin_regex = r"^https://[a-z0-9-]+\.github\.io$"
 
 app.add_middleware(
     CORSMiddleware,
