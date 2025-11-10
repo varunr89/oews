@@ -1,0 +1,20 @@
+api.bhavanaai.com {
+    reverse_proxy oews-api:8000
+
+    # Automatic HTTPS with Let's Encrypt
+    # Recommended: Add email for renewal notifications
+    tls varun.ramesh08@gmail.com
+
+    # Security headers
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Strict-Transport-Security "max-age=31536000;"
+    }
+
+    # Access log to stdout (Docker log driver handles rotation)
+    log {
+        output stdout
+        format json
+    }
+}
