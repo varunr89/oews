@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   oews-api:
-    image: ghcr.io/varunr89/oews-api:latest
+    image: ghcr.io/varunr89/oews:latest
     container_name: oews-api
     restart: unless-stopped
     # No port mapping needed - Caddy uses Docker network
