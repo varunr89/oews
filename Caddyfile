@@ -1,4 +1,4 @@
-api.bhavanaai.com {
+api.oews.bhavanaai.com {
     reverse_proxy oews-api:8000
 
     # Automatic HTTPS with Let's Encrypt
