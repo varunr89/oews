@@ -135,7 +135,7 @@ cat > /opt/oews/.env << 'EOF'
 AZURE_INFERENCE_ENDPOINT=https://your-endpoint.services.ai.azure.com/models
 AZURE_INFERENCE_CREDENTIAL=your-credential-here
 TAVILY_API_KEY=your-tavily-key-here
-CORS_ORIGINS=https://app.bhavanaai.com,http://localhost:3000,https://microsoftedge-spark.github.io,https://*.github.io
+CORS_ORIGINS=https://app.bhavanaai.com,http://localhost:3000,http://localhost:5000,https://microsoftedge-spark.github.io,https://*.github.io,https://*.app.github.dev
 DATABASE_ENV=dev
 SQLITE_DB_PATH=/app/data/oews.db
 API_HOST=0.0.0.0
@@ -256,7 +256,7 @@ gh secret set SSH_HOST_FINGERPRINT --body "$(ssh-keyscan -t ed25519 67.168.88.18
 gh secret set AZURE_INFERENCE_ENDPOINT --body "your-endpoint"
 gh secret set AZURE_INFERENCE_CREDENTIAL --body "your-credential"
 gh secret set TAVILY_API_KEY --body "your-key"
-gh secret set CORS_ORIGINS --body "https://app.bhavanaai.com,http://localhost:3000,https://microsoftedge-spark.github.io,https://*.github.io"
+gh secret set CORS_ORIGINS --body "https://app.bhavanaai.com,http://localhost:3000,http://localhost:5000,https://microsoftedge-spark.github.io,https://*.github.io,https://*.app.github.dev"
 ```
 
 **Note:** GitHub Actions deployment requires SSH access on port 22. Either:

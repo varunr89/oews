@@ -17,7 +17,7 @@
    - `AZURE_INFERENCE_ENDPOINT`: Your Azure OpenAI endpoint URL
    - `AZURE_INFERENCE_CREDENTIAL`: Your Azure OpenAI API key
    - `TAVILY_API_KEY`: Your Tavily API key
-   - `CORS_ORIGINS`: Frontend domains (comma-separated, e.g., `https://app.bhavanaai.com,http://localhost:3000`)
+   - `CORS_ORIGINS`: Frontend domains (comma-separated, e.g., `https://app.bhavanaai.com,http://localhost:3000,http://localhost:5000,https://*.github.io,https://*.app.github.dev`)
 
 3. **Copy files to server:**
    ```bash
