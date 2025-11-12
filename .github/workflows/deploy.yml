@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Build Docker Image
 
 on:
   push:
@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,57 +56,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to server
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
-          script: |
-            cd /opt/oews
-
-            # Validate secrets exist
-            set -euo pipefail
-            : "${AZURE_INFERENCE_ENDPOINT:?AZURE_INFERENCE_ENDPOINT secret not set}"
-            : "${AZURE_INFERENCE_CREDENTIAL:?AZURE_INFERENCE_CREDENTIAL secret not set}"
-            : "${TAVILY_API_KEY:?TAVILY_API_KEY secret not set}"
-            : "${CORS_ORIGINS:?CORS_ORIGINS secret not set}"
-
-            # Write .env file atomically
-            cat > .env.tmp << 'EOF'
-            AZURE_INFERENCE_ENDPOINT=${{ secrets.AZURE_INFERENCE_ENDPOINT }}
-            AZURE_INFERENCE_CREDENTIAL=${{ secrets.AZURE_INFERENCE_CREDENTIAL }}
-            TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
-            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
-            DATABASE_ENV=dev
-            SQLITE_DB_PATH=/app/data/oews.db
-            API_HOST=0.0.0.0
-            API_PORT=8000
-            API_RELOAD=false
-            EOF
-
-            # Set secure permissions and move atomically
-            chmod 600 .env.tmp
-            mv .env.tmp .env
-
-            # Pull new image and restart (restart all services to pick up config changes)
-            docker compose pull
-            docker compose up -d
-
-            # Wait for health check
-            echo "Waiting for containers to be healthy..."
-            sleep 15
-
-            # Verify deployment
-            docker compose ps
-            docker compose logs --tail=20 oews-api
-
-            # Check if container is running
-            if ! docker compose ps | grep -q "oews-api.*running"; then
-              echo "ERROR: oews-api container not running!"
-              docker compose logs oews-api
-              exit 1
-            fi
-
-            echo "✓ Deployment complete"
+      - name: Build summary
+        run: |
+          echo "✅ Docker image built and pushed successfully"
+          echo ""
+          echo "📦 Image: ghcr.io/${{ github.repository }}:latest"
+          echo ""
+          echo "🚀 To deploy, run locally:"
+          echo "   ./scripts/deploy.sh"
+          echo ""
+          echo "⚡ Or for quick deploy:"
+          echo "   ./scripts/quick-deploy.sh"
