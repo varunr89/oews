@@ -67,14 +67,26 @@ app = FastAPI(
 cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000")
 frontend_origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
-# Convert GitHub Pages wildcard to regex pattern if present
+# Convert GitHub wildcards to regex patterns if present
 import re
 allow_origin_regex = None
+regex_patterns = []
+
 if any("*.github.io" in origin for origin in frontend_origins):
     # Remove wildcard entry and add ANCHORED regex pattern
     # SECURITY: Anchored pattern prevents https://github.io.attacker.com bypass
     frontend_origins = [o for o in frontend_origins if "*.github.io" not in o]
-    allow_origin_regex = r"^https://[a-z0-9-]+\.github\.io$"
+    regex_patterns.append(r"https://[a-z0-9-]+\.github\.io")
+
+if any("*.app.github.dev" in origin for origin in frontend_origins):
+    # Remove wildcard entry and add ANCHORED regex pattern for GitHub Codespaces
+    # SECURITY: Anchored pattern prevents subdomain bypass attacks
+    frontend_origins = [o for o in frontend_origins if "*.app.github.dev" not in o]
+    regex_patterns.append(r"https://[a-z0-9-]+\.app\.github\.dev")
+
+# Combine all regex patterns with anchors
+if regex_patterns:
+    allow_origin_regex = r"^(" + "|".join(regex_patterns) + r")$"
 
 app.add_middleware(
     CORSMiddleware,
