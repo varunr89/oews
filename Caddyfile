@@ -1,5 +1,8 @@
 api.oews.bhavanaai.com {
-    reverse_proxy oews-api:8000
+    reverse_proxy oews-api:8000 {
+        # 5 minute timeout for long-running queries
+        timeout 5m
+    }
 
     # Automatic HTTPS with Let's Encrypt
     # Recommended: Add email for renewal notifications

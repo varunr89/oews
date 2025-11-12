@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import time
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncGenerator
 
 from src.api.models import (
@@ -24,6 +26,12 @@ workflow_graph = None
 
 # Initialize logger for API diagnostics
 api_logger = setup_workflow_logger("oews.api")
+
+# Thread pool for running blocking workflow operations
+executor = ThreadPoolExecutor(max_workers=8)  # Allow up to 8 concurrent workflow executions
+
+# Request timeout in seconds (5 minutes)
+REQUEST_TIMEOUT = 300
 
 
 @asynccontextmanager
@@ -147,17 +155,32 @@ async def query(request: QueryRequest) -> QueryResponse:
             "implementation_model_override": request.implementation_model
         }
 
-        # Invoke workflow
-        # Invoke with high recursion limit for debugging
+        # Invoke workflow with timeout
+        # Run blocking workflow_graph.invoke() in thread pool to avoid blocking event loop
         # Force flush API log
         import logging
         for handler in api_logger.handlers:
             handler.flush()
 
-        result = workflow_graph.invoke(
-            initial_state,
-            config={"recursion_limit": 100}
-        )
+        # Define blocking workflow execution
+        def run_workflow():
+            return workflow_graph.invoke(
+                initial_state,
+                config={"recursion_limit": 100}
+            )
+
+        # Run with timeout (5 minutes)
+        loop = asyncio.get_event_loop()
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(executor, run_workflow),
+                timeout=REQUEST_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail=f"Request processing exceeded {REQUEST_TIMEOUT} second timeout. The query may be too complex or the system is under heavy load."
+            )
 
         # Extract formatted response
         formatted = result.get("formatted_response", {})
