@@ -1,3 +1,10 @@
+api.oews.bhavanaai.com/trace/* {
+    reverse_proxy oews-trace:8001 {
+        # Preserve original request path minus /trace prefix
+        header_up Host {http.request.host}
+    }
+}
+
 api.oews.bhavanaai.com {
     reverse_proxy oews-api:8000 {
         # 5 minute timeout for long-running queries
