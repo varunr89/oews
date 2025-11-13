@@ -1,27 +1,28 @@
-api.oews.bhavanaai.com/trace/* {
-    reverse_proxy oews-trace:8001 {
-        # Preserve original request path minus /trace prefix
-        header_up Host {http.request.host}
-    }
-}
-
 api.oews.bhavanaai.com {
-    reverse_proxy oews-api:8000 {
-        # 5 minute timeout for long-running queries
-        timeout 5m
-    }
-
     # Automatic HTTPS with Let's Encrypt
     # Recommended: Add email for renewal notifications
     tls varun.ramesh08@gmail.com
 
-    # Security headers
+    # Security headers applied to all routes
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Frame-Options "DENY"
         X-Content-Type-Options "nosniff"
         Content-Security-Policy "default-src 'self'; frame-ancestors 'none'"
         Referrer-Policy "no-referrer"
+    }
+
+    # Route /trace/* to execution-traceability preview container
+    handle /trace/* {
+        uri strip_prefix /trace
+        reverse_proxy oews-trace:8000 {
+            header_up Host {http.request.host}
+        }
+    }
+
+    # Route all other requests to main API
+    handle {
+        reverse_proxy oews-api:8000
     }
 
     # Access log to stdout (Docker log driver handles rotation)
