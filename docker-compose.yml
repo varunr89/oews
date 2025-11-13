@@ -20,6 +20,26 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  oews-trace:
+    image: ghcr.io/varunr89/oews:execution-traceability
+    container_name: oews-trace
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data-trace:/app/data  # Separate data volume for preview
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     image: caddy:2-alpine
     container_name: caddy
