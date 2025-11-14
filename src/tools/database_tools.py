@@ -221,7 +221,17 @@ def get_sample_data(table_name: str, limit: int = 5) -> str:
         JSON string with sample data
     """
     import json
-    # Use parameterized query for limit
+    from src.database.schema import get_table_list
+
+    # SECURITY: Validate table name against whitelist to prevent SQL injection
+    valid_tables = get_table_list()
+    if table_name not in valid_tables:
+        return json.dumps({
+            "success": False,
+            "error": f"Invalid table name: {table_name}. Valid tables: {', '.join(valid_tables)}"
+        })
+
+    # Safe to use table_name now that it's validated
     sql = f"SELECT * FROM {table_name} LIMIT ?"
     return execute_sql_query.invoke({"sql": sql, "params": json.dumps([limit])})
 

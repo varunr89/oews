@@ -115,25 +115,36 @@ def response_formatter_node(state: State) -> Command:
         trace_json_start = trace_start + len("EXECUTION_TRACE:")
         trace_json = content[trace_json_start:].strip()
 
-        # Find end of JSON by counting braces
+        # Find end of JSON by parsing with proper string tracking
         brace_count = 0
+        in_string = False
+        escape_next = False
         json_end = 0
+
         for i, char in enumerate(trace_json):
-            if char == '{':
-                brace_count += 1
-            elif char == '}':
-                brace_count -= 1
-                if brace_count == 0:
-                    json_end = i + 1
-                    break
-            elif char == '[':
-                # Handle array start
-                brace_count += 1
-            elif char == ']':
-                brace_count -= 1
-                if brace_count == 0:
-                    json_end = i + 1
-                    break
+            # Handle string escaping
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == '\\' and in_string:
+                escape_next = True
+                continue
+
+            # Track string boundaries
+            if char == '"':
+                in_string = not in_string
+                continue
+
+            # Only count braces/brackets outside of strings
+            if not in_string:
+                if char == '{' or char == '[':
+                    brace_count += 1
+                elif char == '}' or char == ']':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
 
         if json_end > 0:
             trace_json = trace_json[:json_end]
@@ -159,6 +170,13 @@ def response_formatter_node(state: State) -> Command:
                 # SQL traces (list of executions)
                 if isinstance(trace_data, list):
                     for sql_trace in trace_data:
+                        # Validate sql_trace is a dict before spreading
+                        if not isinstance(sql_trace, dict):
+                            logger.warning("invalid_sql_trace_type", extra={
+                                "data": {"trace_type": str(type(sql_trace))}
+                            })
+                            continue
+
                         step_num += 1
                         data_sources.append({
                             "step": step_num,
@@ -172,6 +190,13 @@ def response_formatter_node(state: State) -> Command:
                 # Search traces (list of searches)
                 if isinstance(trace_data, list):
                     for search_trace in trace_data:
+                        # Validate search_trace is a dict before spreading
+                        if not isinstance(search_trace, dict):
+                            logger.warning("invalid_search_trace_type", extra={
+                                "data": {"trace_type": str(type(search_trace))}
+                            })
+                            continue
+
                         step_num += 1
                         data_sources.append({
                             "step": step_num,

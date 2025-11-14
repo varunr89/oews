@@ -66,7 +66,8 @@ def cortex_researcher_node(state: State):
 
                     try:
                         params = json.loads(params_str) if params_str else []
-                    except json.JSONDecodeError:
+                    except (json.JSONDecodeError, TypeError):
+                        # Handle both JSON parsing errors and type errors (e.g., if params_str is not a string)
                         params = []
 
                     # Find the corresponding tool response message
@@ -78,8 +79,24 @@ def cortex_researcher_node(state: State):
                             try:
                                 result_data = json.loads(next_msg.content) if isinstance(next_msg.content, str) else next_msg.content
                                 if result_data.get("success"):
-                                    rows = result_data.get("results", [])
-                                    sql_traces.append(build_sql_trace(sql, params, rows))
+                                    # Get columns and data (handle both small and large result sets)
+                                    columns = result_data.get("columns", [])
+                                    # For small results: "data", for large results: "sample_data"
+                                    data_rows = result_data.get("data") or result_data.get("sample_data", [])
+
+                                    # PERFORMANCE: Only convert rows we'll actually use (first 10 for sample_data)
+                                    # build_sql_trace only keeps first 10 rows, so don't convert more than needed
+                                    rows_to_convert = data_rows[:10] if data_rows else []
+                                    rows = [dict(zip(columns, row)) for row in rows_to_convert] if columns and rows_to_convert else []
+
+                                    # Extract metadata from tool response to preserve real row_count and stats
+                                    metadata = {
+                                        "row_count": result_data.get("row_count", len(data_rows)),
+                                        "truncated": result_data.get("truncated", False),
+                                        "stats": result_data.get("stats", None)
+                                    }
+
+                                    sql_traces.append(build_sql_trace(sql, params, rows, metadata))
                             except (json.JSONDecodeError, AttributeError, KeyError) as e:
                                 logger.warning("sql_trace_extraction_error", extra={
                                     "data": {"error": str(e)}
@@ -266,8 +283,10 @@ def web_researcher_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.agents.web_research_agent import create_web_research_agent
+    from src.utils.logger import setup_workflow_logger
     import json
 
+    logger = setup_workflow_logger("oews.workflow.web_researcher")
     agent = create_web_research_agent()
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
@@ -304,7 +323,10 @@ def web_researcher_node(state: State):
                     "search_query": search_query,
                     "sources": sources
                 })
-            except (json.JSONDecodeError, AttributeError, KeyError):
+            except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                logger.warning("search_trace_extraction_error", extra={
+                    "data": {"error": str(e)}
+                })
                 continue
 
     # Add EXECUTION_TRACE if we have traces
