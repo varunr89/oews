@@ -35,14 +35,6 @@ def cortex_researcher_node(state: State):
     # Run agent with correct input format
     result = agent.invoke({"messages": [{"role": "user", "content": agent_query}]})
 
-    # LOG: Agent result structure
-    logger.debug("agent_result", extra={
-        "data": {
-            "result_keys": list(result.keys()) if isinstance(result, dict) else "not a dict",
-            "result_type": str(type(result)),
-            "result_preview": str(result)[:500]
-        }
-    })
 
     # Extract final answer from messages
     if isinstance(result, dict) and "messages" in result:
@@ -55,30 +47,44 @@ def cortex_researcher_node(state: State):
     else:
         response_content = result.get("output", "No result")
 
-    # Extract SQL execution traces from intermediate_steps
+    # Extract SQL execution traces from messages (LangChain 1.0+ stores tool calls in messages)
     sql_traces = []
-    intermediate_steps = result.get("intermediate_steps", [])
+    agent_messages = result.get("messages", [])
 
-    for action, observation in intermediate_steps:
-        # Check if this is an execute_sql_query tool call
-        if hasattr(action, 'tool') and action.tool == "execute_sql_query":
-            try:
-                # Extract SQL and params from action
-                sql = action.tool_input.get("sql", "")
-                params_str = action.tool_input.get("params", "[]")
-                params = json.loads(params_str) if params_str else []
 
-                # Parse observation for results
-                result_data = json.loads(observation) if isinstance(observation, str) else observation
+    # Iterate through messages to find tool calls and responses
+    for i, msg in enumerate(agent_messages):
+        # Check for AI messages with tool calls
+        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                if tool_call.get('name') == 'execute_sql_query':
+                    # Found an SQL execution - look for the corresponding ToolMessage response
+                    tool_call_id = tool_call.get('id')
+                    args = tool_call.get('args', {})
+                    sql = args.get('sql', '')
+                    params_str = args.get('params', '[]')
 
-                if result_data.get("success"):
-                    rows = result_data.get("results", [])
-                    sql_traces.append(build_sql_trace(sql, params, rows))
-            except (json.JSONDecodeError, AttributeError, KeyError) as e:
-                logger.warning("sql_trace_extraction_error", extra={
-                    "data": {"error": str(e)}
-                })
-                continue
+                    try:
+                        params = json.loads(params_str) if params_str else []
+                    except json.JSONDecodeError:
+                        params = []
+
+                    # Find the corresponding tool response message
+                    for j in range(i + 1, len(agent_messages)):
+                        next_msg = agent_messages[j]
+                        if (hasattr(next_msg, 'tool_call_id') and
+                            next_msg.tool_call_id == tool_call_id):
+                            # Parse the tool response
+                            try:
+                                result_data = json.loads(next_msg.content) if isinstance(next_msg.content, str) else next_msg.content
+                                if result_data.get("success"):
+                                    rows = result_data.get("results", [])
+                                    sql_traces.append(build_sql_trace(sql, params, rows))
+                            except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                                logger.warning("sql_trace_extraction_error", extra={
+                                    "data": {"error": str(e)}
+                                })
+                            break
 
     # Add EXECUTION_TRACE to message content if we have traces
     if sql_traces:

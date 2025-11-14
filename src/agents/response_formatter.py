@@ -100,23 +100,6 @@ def response_formatter_node(state: State) -> Command:
     data_sources = []
     step_num = 0
 
-    # LOG: Debug message inspection
-    logger.debug("inspecting_messages_for_traces", extra={
-        "data": {
-            "total_messages": len(messages),
-            "message_agents": [getattr(msg, "name", "no_name") for msg in messages],
-            "messages_with_trace_marker": sum(1 for msg in messages if hasattr(msg, 'content') and "EXECUTION_TRACE" in msg.content),
-            "message_previews": [
-                {
-                    "agent": getattr(msg, "name", "no_name"),
-                    "content_length": len(msg.content) if hasattr(msg, 'content') else 0,
-                    "has_trace": "EXECUTION_TRACE" in msg.content if hasattr(msg, 'content') else False,
-                    "content_preview": msg.content[:200] if hasattr(msg, 'content') else "no content"
-                }
-                for msg in messages
-            ]
-        }
-    })
 
     for msg in messages:
         if not hasattr(msg, 'content') or "EXECUTION_TRACE" not in msg.content:
