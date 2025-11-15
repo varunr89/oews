@@ -90,10 +90,8 @@ def build_sql_trace(
         "params": params,
         "row_count": row_count,
         "sample_data": rows[:10],  # First 10 rows
+        "stats": stats,
     }
-
-    if stats:
-        trace["stats"] = stats
 
     if truncated:
         trace["truncated"] = truncated

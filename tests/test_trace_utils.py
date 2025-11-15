@@ -17,7 +17,7 @@ def test_calculate_column_stats_numeric():
     assert stats is not None
     assert stats["min"] == 50000
     assert stats["max"] == 70000
-    assert stats["avg"] == 60000
+    assert stats["mean"] == 60000
 
 
 def test_calculate_column_stats_non_numeric():
