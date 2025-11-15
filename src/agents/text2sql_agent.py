@@ -150,7 +150,28 @@ Generate a SQL query to answer this question. Return ONLY the SQL query."""
                 }
             })
 
-            # Execute the query
+            # SECURITY: Validate SQL before execution
+            validation_result = tools["validate_sql"].invoke({"sql": sql_query})
+
+            # Parse string response (not JSON)
+            # validate_sql returns: "Error: ...", "Valid: ...", or "Warning: ..."
+            if validation_result.startswith("Error:"):
+                error_msg = validation_result[6:].strip()  # Remove "Error:" prefix
+                logger.warning("simple_agent_invalid_sql", extra={
+                    "data": {"sql": sql_query, "error": error_msg}
+                })
+                return {
+                    "messages": [AIMessage(content=f"Cannot execute query: {error_msg}")],
+                    "intermediate_steps": []
+                }
+
+            # "Valid:" or "Warning:" - proceed with execution
+            if validation_result.startswith("Warning:"):
+                logger.info("simple_agent_sql_warning", extra={
+                    "data": {"warning": validation_result[8:].strip()}
+                })
+
+            # Execute the validated query
             result = tools["execute_sql_query"].invoke({"sql": sql_query})
 
             # Parse result to get row count
