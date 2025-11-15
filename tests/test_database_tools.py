@@ -1,4 +1,5 @@
 import pytest
+import os
 from src.tools.database_tools import (
     get_schema_info,
     validate_sql,
@@ -7,12 +8,21 @@ from src.tools.database_tools import (
     search_occupations
 )
 
-# Mark tests that require database
+# Check if Azure SQL credentials are available for database tests
+HAS_AZURE_SQL = all([
+    os.getenv('AZURE_SQL_SERVER'),
+    os.getenv('AZURE_SQL_DATABASE'),
+    os.getenv('AZURE_SQL_USERNAME'),
+    os.getenv('AZURE_SQL_PASSWORD')
+])
+
+# Mark tests that require database - only skip if credentials not available
 skip_if_no_db = pytest.mark.skipif(
-    True,  # Skip database tests in CI/test environment
-    reason="Database not available in test environment"
+    not HAS_AZURE_SQL,
+    reason="Azure SQL credentials not configured (set AZURE_SQL_SERVER, AZURE_SQL_DATABASE, AZURE_SQL_USERNAME, AZURE_SQL_PASSWORD)"
 )
 
+@skip_if_no_db
 def test_get_schema_info_returns_string():
     """Test schema info tool returns description."""
     result = get_schema_info.invoke({"table_name": "oews_data"})
@@ -20,20 +30,22 @@ def test_get_schema_info_returns_string():
     assert "AREA_TITLE" in result
 
 def test_validate_sql_accepts_select():
-    """Test SQL validation accepts SELECT queries."""
+    """Test SQL validation accepts SELECT queries (no DB needed)."""
     result = validate_sql.invoke({"sql": "SELECT * FROM oews_data LIMIT 1"})
     assert "valid" in result.lower() or "true" in result.lower()
 
 def test_validate_sql_rejects_drop():
-    """Test SQL validation rejects dangerous operations."""
+    """Test SQL validation rejects dangerous operations (no DB needed)."""
     result = validate_sql.invoke({"sql": "DROP TABLE oews_data"})
     assert "dangerous" in result.lower() or "not allowed" in result.lower()
 
+@skip_if_no_db
 def test_execute_sql_query_returns_data():
     """Test SQL execution returns data."""
     result = execute_sql_query.invoke({"sql": "SELECT * FROM oews_data LIMIT 1"})
     assert "success" in result or "columns" in result
 
+@skip_if_no_db
 def test_search_areas_uses_parameterized_queries():
     """Test area search uses safe parameterized queries."""
     # This should not cause SQL injection even with malicious input
@@ -42,6 +54,7 @@ def test_search_areas_uses_parameterized_queries():
     # Should return empty list, not cause an error or drop the table
     assert isinstance(result, list)
 
+@skip_if_no_db
 def test_search_areas_finds_bellingham():
     """Test area search finds Bellingham (or returns empty if DB not populated)."""
     result = search_areas.invoke({"search_term": "Bellingham"})
