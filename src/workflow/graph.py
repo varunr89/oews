@@ -128,6 +128,8 @@ def chart_generator_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.utils.logger import setup_workflow_logger
+    import json
+    import re
 
     logger = setup_workflow_logger("oews.workflow.chart_generator")
 
@@ -163,6 +165,19 @@ def chart_generator_node(state: State):
             response_content = result.get("output", response_content)
     elif hasattr(result, "content"):
         response_content = getattr(result, "content", response_content)
+
+    # Extract chart count for execution trace
+    chart_count = len(re.findall(r'CHART_SPEC:', response_content))
+
+    # Build execution trace
+    execution_trace = {
+        "action": f"Generated {chart_count} chart specification(s)",
+        "chart_count": chart_count,
+        "model": implementation_model_key or "deepseek-v3"
+    }
+
+    # Append EXECUTION_TRACE to response
+    response_content = f"{response_content}\n\nEXECUTION_TRACE: {json.dumps(execution_trace)}"
 
     return Command(
         update={
@@ -216,6 +231,7 @@ def synthesizer_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage, HumanMessage
     from src.config.llm_factory import llm_factory
+    import json
 
     # Get implementation model with override
     implementation_model_key = state.get("implementation_model")
@@ -272,9 +288,20 @@ Focus on key insights and actionable information with specific numbers and data 
     # Invoke LLM
     response = impl_llm.invoke([HumanMessage(content=prompt)])
 
+    # Build execution trace
+    execution_trace = {
+        "action": f"Synthesized final answer ({len(response.content)} characters)",
+        "answer_length": len(response.content),
+        "included_charts": has_charts,
+        "model": implementation_model_key or "deepseek-v3"
+    }
+
+    # Append EXECUTION_TRACE to response
+    response_content = f"{response.content}\n\nEXECUTION_TRACE: {json.dumps(execution_trace)}"
+
     return Command(
         update={
-            "messages": [AIMessage(content=response.content, name="synthesizer")],
+            "messages": [AIMessage(content=response_content, name="synthesizer")],
             "final_answer": response.content,
             "model_usage": {
                 **(state.get("model_usage") or {}),

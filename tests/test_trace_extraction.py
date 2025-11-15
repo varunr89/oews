@@ -186,6 +186,80 @@ class TestTraceFormatterIntegration:
         # Invalid trace should be skipped
         assert "data_sources" in formatted
 
+    def test_formatter_extracts_chart_generator_trace(self):
+        """Test that response_formatter correctly extracts chart_generator traces."""
+        # Simulate a chart_generator trace
+        chart_trace = {
+            "action": "Generated 2 chart specification(s)",
+            "chart_count": 2,
+            "model": "deepseek-v3"
+        }
+
+        message_content = f"Charts created.\n\nEXECUTION_TRACE: {json.dumps(chart_trace)}"
+
+        state = State(
+            messages=[
+                AIMessage(content=message_content, name="chart_generator")
+            ],
+            final_answer="Test answer",
+            user_query="test query",
+            agent_query="test query",
+            plan={},
+            current_step=1,
+            max_steps=5,
+            replans=0,
+            model_usage={}
+        )
+
+        result = response_formatter_node(state)
+        formatted = result.update["formatted_response"]
+
+        # Verify chart_generator trace was extracted
+        assert len(formatted["data_sources"]) > 0
+        chart_trace_result = formatted["data_sources"][0]
+        assert chart_trace_result["type"] == "chart_generation"
+        assert chart_trace_result["agent"] == "chart_generator"
+        assert chart_trace_result["chart_count"] == 2
+        assert chart_trace_result["model"] == "deepseek-v3"
+
+    def test_formatter_extracts_synthesizer_trace(self):
+        """Test that response_formatter correctly extracts synthesizer traces."""
+        # Simulate a synthesizer trace
+        synth_trace = {
+            "action": "Synthesized final answer (1234 characters)",
+            "answer_length": 1234,
+            "included_charts": True,
+            "model": "deepseek-v3"
+        }
+
+        message_content = f"Final answer synthesized.\n\nEXECUTION_TRACE: {json.dumps(synth_trace)}"
+
+        state = State(
+            messages=[
+                AIMessage(content=message_content, name="synthesizer")
+            ],
+            final_answer="Test answer",
+            user_query="test query",
+            agent_query="test query",
+            plan={},
+            current_step=1,
+            max_steps=5,
+            replans=0,
+            model_usage={}
+        )
+
+        result = response_formatter_node(state)
+        formatted = result.update["formatted_response"]
+
+        # Verify synthesizer trace was extracted
+        assert len(formatted["data_sources"]) > 0
+        synth_trace_result = formatted["data_sources"][0]
+        assert synth_trace_result["type"] == "synthesis"
+        assert synth_trace_result["agent"] == "synthesizer"
+        assert synth_trace_result["answer_length"] == 1234
+        assert synth_trace_result["included_charts"] is True
+        assert synth_trace_result["model"] == "deepseek-v3"
+
 
 class TestPerformanceOptimizations:
     """Test performance optimizations for large result sets."""

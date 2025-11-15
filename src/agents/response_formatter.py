@@ -206,6 +206,33 @@ def response_formatter_node(state: State) -> Command:
                             **search_trace
                         })
 
+            elif agent_name == "chart_generator":
+                # Chart generation trace (single dict)
+                if isinstance(trace_data, dict):
+                    step_num += 1
+                    data_sources.append({
+                        "step": step_num,
+                        "agent": "chart_generator",
+                        "type": "chart_generation",
+                        "action": trace_data.get("action", "Generated chart specifications"),
+                        "chart_count": trace_data.get("chart_count", 0),
+                        "model": trace_data.get("model", "unknown")
+                    })
+
+            elif agent_name == "synthesizer":
+                # Synthesis trace (single dict)
+                if isinstance(trace_data, dict):
+                    step_num += 1
+                    data_sources.append({
+                        "step": step_num,
+                        "agent": "synthesizer",
+                        "type": "synthesis",
+                        "action": trace_data.get("action", "Synthesized final answer"),
+                        "answer_length": trace_data.get("answer_length", 0),
+                        "included_charts": trace_data.get("included_charts", False),
+                        "model": trace_data.get("model", "unknown")
+                    })
+
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("trace_parse_error", extra={
                 "data": {
