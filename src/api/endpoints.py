@@ -155,6 +155,9 @@ async def query(request: QueryRequest) -> QueryResponse:
     """
     Process a natural language query about OEWS employment data.
 
+    ⚠️ WARNING: No authentication currently implemented.
+    See docs/AUTHENTICATION.md for future implementation options.
+
     This endpoint invokes the multi-agent workflow to:
     1. Plan the execution steps
     2. Query the database (Text2SQL)
