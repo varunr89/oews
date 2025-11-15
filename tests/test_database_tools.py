@@ -75,3 +75,106 @@ def test_search_occupations_with_alternative_name():
     assert isinstance(result, list)
     # Should find software developer related occupations
     assert len(result) > 0
+
+
+def test_execute_sql_query_blocks_non_select_statements():
+    """Test that execute_sql_query blocks dangerous SQL statements."""
+    import json
+
+    dangerous_queries = [
+        "DROP TABLE oews_data",
+        "DELETE FROM oews_data WHERE 1=1",
+        "UPDATE oews_data SET A_MEAN = 0",
+        "INSERT INTO oews_data VALUES (1, 2, 3)",
+        "ALTER TABLE oews_data ADD COLUMN test TEXT",
+        "CREATE TABLE malicious (id INT)",
+        "TRUNCATE TABLE oews_data",
+        "  drop table oews_data",  # With leading whitespace
+        "-- comment\nDROP TABLE oews_data",  # With comment
+    ]
+
+    for sql in dangerous_queries:
+        result = execute_sql_query.invoke({"sql": sql, "params": "[]"})
+        result_data = json.loads(result)
+        assert result_data["success"] is False, f"Should block: {sql}"
+        assert "SELECT" in result_data["error"] or "WITH" in result_data["error"], \
+            f"Error should mention allowed statements: {result_data['error']}"
+
+
+def test_execute_sql_query_allows_select_with_whitespace():
+    """Test that SELECT queries with leading whitespace/comments are allowed."""
+    import json
+
+    valid_queries = [
+        "SELECT * FROM oews_data LIMIT 1",
+        "  SELECT * FROM oews_data LIMIT 1",  # Leading whitespace
+        "\nSELECT * FROM oews_data LIMIT 1",  # Leading newline
+        "-- comment\nSELECT * FROM oews_data LIMIT 1",  # With comment
+        "select * FROM oews_data LIMIT 1",  # Lowercase
+    ]
+
+    for sql in valid_queries:
+        result = execute_sql_query.invoke({"sql": sql, "params": "[]"})
+        result_data = json.loads(result)
+        # Should succeed (or fail for other reasons, but not security policy)
+        if not result_data["success"]:
+            # Error should NOT be our SELECT-only policy rejection
+            assert "only select and with" not in result_data["error"].lower(), \
+                f"Should not block SELECT query: {sql}"
+            assert "not allowed" not in result_data["error"].lower() or "no such table" in result_data["error"].lower(), \
+                f"Should not be a policy error for SELECT query: {sql}"
+
+
+def test_execute_sql_query_allows_cte():
+    """Test that WITH (CTE) queries are allowed."""
+    import json
+
+    sql = """
+    WITH avg_wage AS (
+        SELECT AVG(A_MEAN) as avg_val FROM oews_data
+    )
+    SELECT * FROM avg_wage LIMIT 1
+    """
+    result = execute_sql_query.invoke({"sql": sql, "params": "[]"})
+    result_data = json.loads(result)
+    # Should succeed or fail for reasons other than policy
+    if not result_data["success"]:
+        # Error should NOT be our SELECT-only policy rejection
+        assert "only select and with" not in result_data["error"].lower(), \
+            "Should not block WITH (CTE) query with policy error"
+        assert "with clause must be followed by select" not in result_data["error"].lower(), \
+            "Should recognize valid WITH...SELECT pattern"
+
+
+def test_execute_sql_query_blocks_multiple_statements():
+    """Test that multi-statement payloads are blocked."""
+    import json
+
+    dangerous_multi = [
+        "SELECT 1; DROP TABLE oews_data",
+        "SELECT * FROM oews_data; DELETE FROM oews_data",
+        "SELECT 1; SELECT 2",  # Even benign multiples blocked
+    ]
+
+    for sql in dangerous_multi:
+        result = execute_sql_query.invoke({"sql": sql, "params": "[]"})
+        result_data = json.loads(result)
+        assert result_data["success"] is False, f"Should block multi-statement: {sql}"
+        assert "multiple" in result_data["error"].lower() or \
+               "single" in result_data["error"].lower(), \
+            f"Should mention multiple statements: {result_data['error']}"
+
+
+def test_execute_sql_query_adds_default_limit():
+    """Test that queries without LIMIT get a defensive cap."""
+    import json
+
+    sql = "SELECT * FROM oews_data"
+    result = execute_sql_query.invoke({"sql": sql, "params": "[]"})
+    result_data = json.loads(result)
+
+    if result_data["success"]:
+        assert "row_count" in result_data
+        # Should not return more than default limit
+        assert result_data["row_count"] <= 10000, \
+            "Query without LIMIT should be capped"
