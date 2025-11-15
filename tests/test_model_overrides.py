@@ -52,3 +52,17 @@ def test_planner_uses_default_reasoning_model_when_no_override():
 
         # Verify get_reasoning was called with None (use default)
         mock_factory.get_reasoning.assert_called_once_with(override_key=None)
+
+
+def test_text2sql_agent_uses_implementation_model_override():
+    """Test that text2sql agent respects implementation_model."""
+    from src.agents.text2sql_agent import create_text2sql_agent
+
+    with patch('src.agents.text2sql_agent.llm_factory') as mock_factory:
+        mock_llm = Mock()
+        mock_factory.get_implementation.return_value = mock_llm
+
+        agent = create_text2sql_agent(override_key="gpt-4o")
+
+        # Verify get_implementation was called with override_key
+        mock_factory.get_implementation.assert_called_once_with(override_key="gpt-4o")

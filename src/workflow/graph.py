@@ -19,7 +19,11 @@ def cortex_researcher_node(state: State):
 
     logger = setup_workflow_logger("oews.workflow.cortex_researcher")
 
-    agent = create_text2sql_agent()
+    # Get implementation model override from state
+    implementation_model_key = state.get("implementation_model")
+
+    # Create agent with optional override
+    agent = create_text2sql_agent(override_key=implementation_model_key)
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
     # LOG: DIAGNOSTIC - Show what query cortex_researcher receives

@@ -1,6 +1,6 @@
 """Text2SQL Agent for querying the OEWS database with ReAct pattern."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 
@@ -48,14 +48,29 @@ Work step-by-step:
 Be thorough but concise. If you can't find data, say so clearly."""
 
 
-def create_text2sql_agent():
+def create_text2sql_agent(override_key: Optional[str] = None):
     """
-    Create a ReAct Text2SQL agent with tool calling.
+    Create a Text2SQL ReAct agent.
+
+    Args:
+        override_key: Optional model key to use instead of default implementation model
 
     Returns:
-        Agent graph with proper tool calling setup
+        Agent executor that can be invoked with input dict
     """
-    llm = llm_factory.get_implementation()
+    # Get implementation model (with optional override)
+    llm = llm_factory.get_implementation(override_key=override_key)
+
+    # Track actual model used
+    actual_model = llm.model if hasattr(llm, 'model') else \
+                   llm.model_name if hasattr(llm, 'model_name') else "unknown"
+
+    logger.info("text2sql_agent_created", extra={
+        "data": {
+            "model_requested": override_key or "default",
+            "model_actual": actual_model
+        }
+    })
 
     # Ensure LLM supports tool calling
     if not hasattr(llm, 'bind_tools'):
