@@ -1,6 +1,6 @@
 """Text2SQL Agent for querying the OEWS database with ReAct pattern."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.agents import create_agent
 
@@ -48,14 +48,29 @@ Work step-by-step:
 Be thorough but concise. If you can't find data, say so clearly."""
 
 
-def create_text2sql_agent():
+def create_text2sql_agent(override_key: Optional[str] = None):
     """
-    Create a ReAct Text2SQL agent with tool calling.
+    Create a Text2SQL ReAct agent.
+
+    Args:
+        override_key: Optional model key to use instead of default implementation model
 
     Returns:
-        Agent graph with proper tool calling setup
+        Agent executor that can be invoked with input dict
     """
-    llm = llm_factory.get_implementation()
+    # Get implementation model (with optional override)
+    llm = llm_factory.get_implementation(override_key=override_key)
+
+    # Track actual model used
+    actual_model = llm.model if hasattr(llm, 'model') else \
+                   llm.model_name if hasattr(llm, 'model_name') else "unknown"
+
+    logger.info("text2sql_agent_created", extra={
+        "data": {
+            "model_requested": override_key or "default",
+            "model_actual": actual_model
+        }
+    })
 
     # Ensure LLM supports tool calling
     if not hasattr(llm, 'bind_tools'):
@@ -135,7 +150,28 @@ Generate a SQL query to answer this question. Return ONLY the SQL query."""
                 }
             })
 
-            # Execute the query
+            # SECURITY: Validate SQL before execution
+            validation_result = tools["validate_sql"].invoke({"sql": sql_query})
+
+            # Parse string response (not JSON)
+            # validate_sql returns: "Error: ...", "Valid: ...", or "Warning: ..."
+            if validation_result.startswith("Error:"):
+                error_msg = validation_result[6:].strip()  # Remove "Error:" prefix
+                logger.warning("simple_agent_invalid_sql", extra={
+                    "data": {"sql": sql_query, "error": error_msg}
+                })
+                return {
+                    "messages": [AIMessage(content=f"Cannot execute query: {error_msg}")],
+                    "intermediate_steps": []
+                }
+
+            # "Valid:" or "Warning:" - proceed with execution
+            if validation_result.startswith("Warning:"):
+                logger.info("simple_agent_sql_warning", extra={
+                    "data": {"warning": validation_result[8:].strip()}
+                })
+
+            # Execute the validated query
             result = tools["execute_sql_query"].invoke({"sql": sql_query})
 
             # Parse result to get row count

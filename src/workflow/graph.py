@@ -14,10 +14,16 @@ def cortex_researcher_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.utils.logger import setup_workflow_logger
+    from src.utils.trace_utils import build_sql_trace
+    import json
 
     logger = setup_workflow_logger("oews.workflow.cortex_researcher")
 
-    agent = create_text2sql_agent()
+    # Get implementation model override from state
+    implementation_model_key = state.get("implementation_model")
+
+    # Create agent with optional override
+    agent = create_text2sql_agent(override_key=implementation_model_key)
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
     # LOG: DIAGNOSTIC - Show what query cortex_researcher receives
@@ -33,14 +39,6 @@ def cortex_researcher_node(state: State):
     # Run agent with correct input format
     result = agent.invoke({"messages": [{"role": "user", "content": agent_query}]})
 
-    # LOG: Agent result structure
-    logger.debug("agent_result", extra={
-        "data": {
-            "result_keys": list(result.keys()) if isinstance(result, dict) else "not a dict",
-            "result_type": str(type(result)),
-            "result_preview": str(result)[:500]
-        }
-    })
 
     # Extract final answer from messages
     if isinstance(result, dict) and "messages" in result:
@@ -51,8 +49,67 @@ def cortex_researcher_node(state: State):
         else:
             response_content = "No messages in result"
     else:
-        # Fallback to output key
         response_content = result.get("output", "No result")
+
+    # Extract SQL execution traces from messages (LangChain 1.0+ stores tool calls in messages)
+    sql_traces = []
+    agent_messages = result.get("messages", [])
+
+
+    # Iterate through messages to find tool calls and responses
+    for i, msg in enumerate(agent_messages):
+        # Check for AI messages with tool calls
+        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+            for tool_call in msg.tool_calls:
+                if tool_call.get('name') == 'execute_sql_query':
+                    # Found an SQL execution - look for the corresponding ToolMessage response
+                    tool_call_id = tool_call.get('id')
+                    args = tool_call.get('args', {})
+                    sql = args.get('sql', '')
+                    params_str = args.get('params', '[]')
+
+                    try:
+                        params = json.loads(params_str) if params_str else []
+                    except (json.JSONDecodeError, TypeError):
+                        # Handle both JSON parsing errors and type errors (e.g., if params_str is not a string)
+                        params = []
+
+                    # Find the corresponding tool response message
+                    for j in range(i + 1, len(agent_messages)):
+                        next_msg = agent_messages[j]
+                        if (hasattr(next_msg, 'tool_call_id') and
+                            next_msg.tool_call_id == tool_call_id):
+                            # Parse the tool response
+                            try:
+                                result_data = json.loads(next_msg.content) if isinstance(next_msg.content, str) else next_msg.content
+                                if result_data.get("success"):
+                                    # Get columns and data (handle both small and large result sets)
+                                    columns = result_data.get("columns", [])
+                                    # For small results: "data", for large results: "sample_data"
+                                    data_rows = result_data.get("data") or result_data.get("sample_data", [])
+
+                                    # PERFORMANCE: Only convert rows we'll actually use (first 10 for sample_data)
+                                    # build_sql_trace only keeps first 10 rows, so don't convert more than needed
+                                    rows_to_convert = data_rows[:10] if data_rows else []
+                                    rows = [dict(zip(columns, row)) for row in rows_to_convert] if columns and rows_to_convert else []
+
+                                    # Extract metadata from tool response to preserve real row_count and stats
+                                    metadata = {
+                                        "row_count": result_data.get("row_count", len(data_rows)),
+                                        "truncated": result_data.get("truncated", False),
+                                        "stats": result_data.get("stats", None)
+                                    }
+
+                                    sql_traces.append(build_sql_trace(sql, params, rows, metadata))
+                            except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                                logger.warning("sql_trace_extraction_error", extra={
+                                    "data": {"error": str(e)}
+                                })
+                            break
+
+    # Add EXECUTION_TRACE to message content if we have traces
+    if sql_traces:
+        response_content = f"{response_content}\n\nEXECUTION_TRACE: {json.dumps(sql_traces)}"
 
     return Command(
         update={
@@ -71,10 +128,14 @@ def chart_generator_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.utils.logger import setup_workflow_logger
+    import json
+    import re
 
     logger = setup_workflow_logger("oews.workflow.chart_generator")
 
-    agent = create_chart_generator_agent()
+    # Get implementation model override from state
+    implementation_model_key = state.get("implementation_model")
+    agent = create_chart_generator_agent(override_key=implementation_model_key)
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
     # Run agent with standard message payload
@@ -104,6 +165,19 @@ def chart_generator_node(state: State):
             response_content = result.get("output", response_content)
     elif hasattr(result, "content"):
         response_content = getattr(result, "content", response_content)
+
+    # Extract chart count for execution trace
+    chart_count = len(re.findall(r'CHART_SPEC:', response_content))
+
+    # Build execution trace
+    execution_trace = {
+        "action": f"Generated {chart_count} chart specification(s)",
+        "chart_count": chart_count,
+        "model": implementation_model_key or "deepseek-v3"
+    }
+
+    # Append EXECUTION_TRACE to response
+    response_content = f"{response_content}\n\nEXECUTION_TRACE: {json.dumps(execution_trace)}"
 
     return Command(
         update={
@@ -157,9 +231,11 @@ def synthesizer_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage, HumanMessage
     from src.config.llm_factory import llm_factory
+    import json
 
-    # Get implementation model
-    impl_llm = llm_factory.get_implementation()
+    # Get implementation model with override
+    implementation_model_key = state.get("implementation_model")
+    impl_llm = llm_factory.get_implementation(override_key=implementation_model_key)
 
     # Build summary prompt
     messages = state.get("messages", [])
@@ -212,9 +288,20 @@ Focus on key insights and actionable information with specific numbers and data 
     # Invoke LLM
     response = impl_llm.invoke([HumanMessage(content=prompt)])
 
+    # Build execution trace
+    execution_trace = {
+        "action": f"Synthesized final answer ({len(response.content)} characters)",
+        "answer_length": len(response.content),
+        "included_charts": has_charts,
+        "model": implementation_model_key or "deepseek-v3"
+    }
+
+    # Append EXECUTION_TRACE to response
+    response_content = f"{response.content}\n\nEXECUTION_TRACE: {json.dumps(execution_trace)}"
+
     return Command(
         update={
-            "messages": [AIMessage(content=response.content, name="synthesizer")],
+            "messages": [AIMessage(content=response_content, name="synthesizer")],
             "final_answer": response.content,
             "model_usage": {
                 **(state.get("model_usage") or {}),
@@ -230,8 +317,14 @@ def web_researcher_node(state: State):
     from langgraph.types import Command
     from langchain_core.messages import AIMessage
     from src.agents.web_research_agent import create_web_research_agent
+    from src.utils.logger import setup_workflow_logger
+    import json
 
-    agent = create_web_research_agent()
+    logger = setup_workflow_logger("oews.workflow.web_researcher")
+
+    # Get implementation model override from state
+    implementation_model_key = state.get("implementation_model")
+    agent = create_web_research_agent(override_key=implementation_model_key)
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
     # Run agent
@@ -239,6 +332,43 @@ def web_researcher_node(state: State):
 
     final_message = result["messages"][-1] if result.get("messages") else None
     response_content = final_message.content if final_message else "No results from web research."
+
+    # Extract search traces from intermediate_steps
+    search_traces = []
+    intermediate_steps = result.get("intermediate_steps", [])
+
+    for action, observation in intermediate_steps:
+        # Check if this is a search tool call
+        if hasattr(action, 'tool') and 'search' in action.tool.lower():
+            try:
+                search_query = action.tool_input.get("query", "")
+
+                # Parse observation for sources
+                # Tavily returns JSON with results array
+                obs_data = json.loads(observation) if isinstance(observation, str) else observation
+
+                sources = []
+                if isinstance(obs_data, dict) and "results" in obs_data:
+                    for item in obs_data["results"][:5]:  # Top 5 sources
+                        sources.append({
+                            "url": item.get("url", ""),
+                            "title": item.get("title", ""),
+                            "snippet": item.get("content", "")[:200]  # First 200 chars
+                        })
+
+                search_traces.append({
+                    "search_query": search_query,
+                    "sources": sources
+                })
+            except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                logger.warning("search_trace_extraction_error", extra={
+                    "data": {"error": str(e)}
+                })
+                continue
+
+    # Add EXECUTION_TRACE if we have traces
+    if search_traces:
+        response_content = f"{response_content}\n\nEXECUTION_TRACE: {json.dumps(search_traces)}"
 
     return Command(
         update={

@@ -1,5 +1,6 @@
 """Database tools for Text2SQL agent - SECURE IMPLEMENTATION."""
 
+import sqlparse
 from typing import Dict, Any, List, Optional
 from langchain_core.tools import tool
 from src.database.connection import OEWSDatabase
@@ -83,30 +84,90 @@ def validate_sql(sql: str) -> str:
 @tool
 def execute_sql_query(sql: str, params: Optional[str] = None) -> str:
     """
-    Executes SQL query against OEWS database and returns results.
+    Execute a SELECT query on the OEWS database.
 
-    SECURITY: This tool REQUIRES parameterized queries.
-    All user inputs MUST be passed via the params argument as a JSON string.
+    SECURITY: Only SELECT and WITH (CTE) queries are allowed. All other SQL
+    statements (DROP, DELETE, UPDATE, INSERT, ALTER, CREATE, TRUNCATE) and
+    multi-statement queries are rejected.
 
     For large result sets (>1000 rows), returns a summary with first 10 rows
     instead of the full dataset to prevent memory issues.
 
-    Returns JSON string with columns, data, row count, and SQL query.
-
     Args:
-        sql: SQL SELECT query with ? placeholders
-        params: Optional JSON string of parameters (e.g., '["Seattle", 10]')
+        sql: SQL SELECT or WITH query to execute
+        params: JSON array of parameters for parameterized query
 
     Returns:
-        JSON string with query results or summary
-
-    Example:
-        execute_sql_query(
-            sql="SELECT * FROM oews_data WHERE AREA_TITLE LIKE ? LIMIT ?",
-            params='["%Seattle%", 10]'
-        )
+        JSON string with results or error
     """
     import json
+
+    # SECURITY: Enforce SELECT-only policy using sqlparse
+    try:
+        statements = sqlparse.parse(sql)
+    except Exception as e:
+        logger.error("sql_parse_error", extra={
+            "data": {"error": str(e), "sql_preview": sql[:100]}
+        })
+        return json.dumps({
+            "success": False,
+            "error": f"SQL parsing error: {str(e)}"
+        })
+
+    # Reject empty SQL
+    if len(statements) == 0:
+        return json.dumps({"success": False, "error": "Empty SQL query"})
+
+    # Reject multiple statements (prevents "SELECT 1; DROP TABLE" attacks)
+    if len(statements) > 1:
+        logger.warning("sql_execution_blocked", extra={
+            "data": {"reason": "multiple_statements", "count": len(statements)}
+        })
+        return json.dumps({
+            "success": False,
+            "error": "Multiple SQL statements not allowed. Only single SELECT or WITH queries permitted."
+        })
+
+    statement = statements[0]
+
+    # Get first token (sqlparse automatically handles whitespace/comments)
+    first_token = statement.token_first(skip_ws=True, skip_cm=True)
+
+    if not first_token:
+        return json.dumps({"success": False, "error": "Could not parse SQL statement"})
+
+    first_token_value = first_token.value.upper()
+
+    # Allow SELECT and WITH (CTEs)
+    if first_token_value not in ('SELECT', 'WITH'):
+        logger.warning("sql_execution_blocked", extra={
+            "data": {
+                "reason": "non_select_statement",
+                "first_token": first_token_value,
+                "sql_preview": sql[:100]
+            }
+        })
+        return json.dumps({
+            "success": False,
+            "error": f"Only SELECT and WITH (CTE) queries are allowed. Got: {first_token_value}"
+        })
+
+    # For WITH statements, verify they contain SELECT
+    if first_token_value == 'WITH':
+        sql_upper = sql.upper()
+        if 'SELECT' not in sql_upper:
+            return json.dumps({
+                "success": False,
+                "error": "WITH clause must be followed by SELECT"
+            })
+
+    # Add defensive LIMIT if not present
+    MAX_ROWS_WITHOUT_LIMIT = 10000
+    if 'LIMIT' not in sql.upper():
+        logger.info("sql_adding_defensive_limit", extra={
+            "data": {"original_sql_preview": sql[:100]}
+        })
+        sql = f"{sql.rstrip().rstrip(';')} LIMIT {MAX_ROWS_WITHOUT_LIMIT}"
 
     # LOG: SQL execution start
     logger.debug("sql_execution_start", extra={
@@ -221,7 +282,17 @@ def get_sample_data(table_name: str, limit: int = 5) -> str:
         JSON string with sample data
     """
     import json
-    # Use parameterized query for limit
+    from src.database.schema import get_table_list
+
+    # SECURITY: Validate table name against whitelist to prevent SQL injection
+    valid_tables = get_table_list()
+    if table_name not in valid_tables:
+        return json.dumps({
+            "success": False,
+            "error": f"Invalid table name: {table_name}. Valid tables: {', '.join(valid_tables)}"
+        })
+
+    # Safe to use table_name now that it's validated
     sql = f"SELECT * FROM {table_name} LIMIT ?"
     return execute_sql_query.invoke({"sql": sql, "params": json.dumps([limit])})
 

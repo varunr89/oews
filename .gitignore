@@ -109,3 +109,4 @@ docker-config.json
 # Caddy data (volumes)
 caddy_data/
 caddy_config/
+data/backups/oews.db.*

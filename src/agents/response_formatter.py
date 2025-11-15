@@ -96,22 +96,160 @@ def response_formatter_node(state: State) -> Command:
 
                 chart_start = json_end if json_end > json_start else chart_start + 1
 
-    # Extract data sources
+    # Extract execution traces from all agents
     data_sources = []
+    step_num = 0
+
+
     for msg in messages:
-        if hasattr(msg, 'name') and msg.name == "cortex_researcher":
-            # Try to extract SQL queries from message
-            if "success" in msg.content and "sql" in msg.content.lower():
-                try:
-                    result_data = json.loads(msg.content)
-                    if result_data.get("success"):
+        if not hasattr(msg, 'content') or "EXECUTION_TRACE" not in msg.content:
+            continue
+
+        # Find EXECUTION_TRACE marker
+        content = msg.content
+        trace_start = content.find("EXECUTION_TRACE:")
+        if trace_start == -1:
+            continue
+
+        # Extract JSON after marker
+        trace_json_start = trace_start + len("EXECUTION_TRACE:")
+        trace_json = content[trace_json_start:].strip()
+
+        # Find end of JSON by parsing with proper string tracking
+        brace_count = 0
+        in_string = False
+        escape_next = False
+        json_end = 0
+
+        for i, char in enumerate(trace_json):
+            # Handle string escaping
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == '\\' and in_string:
+                escape_next = True
+                continue
+
+            # Track string boundaries
+            if char == '"':
+                in_string = not in_string
+                continue
+
+            # Only count braces/brackets outside of strings
+            if not in_string:
+                if char == '{' or char == '[':
+                    brace_count += 1
+                elif char == '}' or char == ']':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
+
+        if json_end > 0:
+            trace_json = trace_json[:json_end]
+
+        try:
+            trace_data = json.loads(trace_json)
+            agent_name = getattr(msg, "name", "unknown")
+
+            # Handle different agent types
+            if agent_name in ["initial_plan", "replan"]:
+                # Planner trace
+                step_num += 1
+                data_sources.append({
+                    "step": step_num,
+                    "agent": "planner",
+                    "type": "planning",
+                    "action": f"Generated execution plan with {trace_data.get('steps', 0)} steps",
+                    "plan": trace_data.get("plan", {}),
+                    "reasoning_model": trace_data.get("reasoning_model", "unknown")
+                })
+
+            elif agent_name == "cortex_researcher":
+                # SQL traces (list of executions)
+                if isinstance(trace_data, list):
+                    for sql_trace in trace_data:
+                        # Validate sql_trace is a dict before spreading
+                        if not isinstance(sql_trace, dict):
+                            logger.warning("invalid_sql_trace_type", extra={
+                                "data": {"trace_type": str(type(sql_trace))}
+                            })
+                            continue
+
+                        step_num += 1
                         data_sources.append({
-                            "name": "OEWS Database",
-                            "sql_query": result_data.get("sql", ""),
-                            "row_count": result_data.get("row_count", 0)
+                            "step": step_num,
+                            "agent": "cortex_researcher",
+                            "type": "oews_database",
+                            "action": f"Executed SQL query returning {sql_trace.get('row_count', 0)} rows",
+                            **sql_trace
                         })
-                except:
-                    pass
+
+            elif agent_name == "web_researcher":
+                # Search traces (list of searches)
+                if isinstance(trace_data, list):
+                    for search_trace in trace_data:
+                        # Validate search_trace is a dict before spreading
+                        if not isinstance(search_trace, dict):
+                            logger.warning("invalid_search_trace_type", extra={
+                                "data": {"trace_type": str(type(search_trace))}
+                            })
+                            continue
+
+                        step_num += 1
+                        data_sources.append({
+                            "step": step_num,
+                            "agent": "web_researcher",
+                            "type": "web_search",
+                            "action": f"Searched: {search_trace.get('search_query', '')}",
+                            **search_trace
+                        })
+
+            elif agent_name == "chart_generator":
+                # Chart generation trace (single dict)
+                if isinstance(trace_data, dict):
+                    step_num += 1
+                    data_sources.append({
+                        "step": step_num,
+                        "agent": "chart_generator",
+                        "type": "chart_generation",
+                        "action": trace_data.get("action", "Generated chart specifications"),
+                        "chart_count": trace_data.get("chart_count", 0),
+                        "model": trace_data.get("model", "unknown")
+                    })
+
+            elif agent_name == "synthesizer":
+                # Synthesis trace (single dict)
+                if isinstance(trace_data, dict):
+                    step_num += 1
+                    data_sources.append({
+                        "step": step_num,
+                        "agent": "synthesizer",
+                        "type": "synthesis",
+                        "action": trace_data.get("action", "Synthesized final answer"),
+                        "answer_length": trace_data.get("answer_length", 0),
+                        "included_charts": trace_data.get("included_charts", False),
+                        "model": trace_data.get("model", "unknown")
+                    })
+
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("trace_parse_error", extra={
+                "data": {
+                    "agent": getattr(msg, "name", "unknown"),
+                    "error": str(e),
+                    "trace_preview": trace_json[:200] if 'trace_json' in locals() else ""
+                }
+            })
+            continue
+
+    # LOG: Extracted traces
+    logger.debug("traces_extracted", extra={
+        "data": {
+            "total_traces": len(data_sources),
+            "trace_types": [ds.get("type") for ds in data_sources]
+        }
+    })
 
     # Build formatted response
     formatted_response = {
