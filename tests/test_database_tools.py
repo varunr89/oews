@@ -8,7 +8,9 @@ from src.tools.database_tools import (
     search_occupations
 )
 
-# Check if Azure SQL credentials are available for database tests
+# Check if database is available (either local SQLite or Azure SQL)
+HAS_LOCAL_DB = os.path.exists(os.getenv('SQLITE_DB_PATH', 'data/oews.db'))
+
 HAS_AZURE_SQL = all([
     os.getenv('AZURE_SQL_SERVER'),
     os.getenv('AZURE_SQL_DATABASE'),
@@ -16,10 +18,12 @@ HAS_AZURE_SQL = all([
     os.getenv('AZURE_SQL_PASSWORD')
 ])
 
-# Mark tests that require database - only skip if credentials not available
+HAS_ANY_DB = HAS_LOCAL_DB or HAS_AZURE_SQL
+
+# Mark tests that require database - skip only if no database is available
 skip_if_no_db = pytest.mark.skipif(
-    not HAS_AZURE_SQL,
-    reason="Azure SQL credentials not configured (set AZURE_SQL_SERVER, AZURE_SQL_DATABASE, AZURE_SQL_USERNAME, AZURE_SQL_PASSWORD)"
+    not HAS_ANY_DB,
+    reason="No database available. Provide either: (1) local SQLite at data/oews.db, or (2) Azure SQL credentials (AZURE_SQL_SERVER, AZURE_SQL_DATABASE, AZURE_SQL_USERNAME, AZURE_SQL_PASSWORD)"
 )
 
 @skip_if_no_db
@@ -65,7 +69,10 @@ def test_search_areas_finds_bellingham():
         assert any("Bellingham" in area for area in result) or len(result) == 0
 
 
-@skip_if_no_db
+@pytest.mark.skipif(
+    not HAS_AZURE_SQL,
+    reason="Requires Azure SQL with full OEWS data (Data and OES OEWS.DP). Local SQLite only has metadata."
+)
 def test_search_areas_with_typo():
     """Test that search_areas handles typos with fuzzy matching."""
     from src.tools.database_tools import search_areas
@@ -78,7 +85,10 @@ def test_search_areas_with_typo():
     assert any("Seattle" in area for area in result)
 
 
-@skip_if_no_db
+@pytest.mark.skipif(
+    not HAS_AZURE_SQL,
+    reason="Requires Azure SQL with full OEWS data (Data and OES OEWS.DP). Local SQLite only has metadata."
+)
 def test_search_occupations_with_alternative_name():
     """Test occupation search with alternative name."""
     from src.tools.database_tools import search_occupations
