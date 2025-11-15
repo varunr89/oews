@@ -1,7 +1,7 @@
 """Pydantic models for API requests and responses."""
 
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class QueryRequest(BaseModel):
@@ -29,6 +29,31 @@ class QueryRequest(BaseModel):
         default=None,
         description="Override default implementation model (e.g., 'deepseek-v3')"
     )
+
+    @field_validator('reasoning_model', 'implementation_model')
+    @classmethod
+    def validate_model_key(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that model key exists in registry."""
+        if v is None:
+            return v
+
+        # Import here to avoid circular dependency
+        from src.config.llm_config import get_default_registry
+
+        try:
+            registry = get_default_registry()
+            if v not in registry.models:
+                available = ", ".join(sorted(registry.models.keys()))
+                raise ValueError(
+                    f"Model '{v}' not found in registry. "
+                    f"Available models: {available}"
+                )
+            return v
+        except Exception as e:
+            # If config loading fails, log but don't block (degraded mode)
+            import logging
+            logging.warning(f"Could not validate model key '{v}': {e}")
+            return v
 
 
 class ChartSpec(BaseModel):
