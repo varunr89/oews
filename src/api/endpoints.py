@@ -98,6 +98,42 @@ app.add_middleware(
 )
 
 
+def sanitize_error_message(error: Exception) -> str:
+    """
+    Sanitize error message to remove sensitive information.
+
+    Args:
+        error: The exception that occurred
+
+    Returns:
+        Safe error message for client
+    """
+    error_str = str(error).lower()
+
+    # Check for sensitive patterns
+    sensitive_patterns = [
+        'password', 'api_key', 'secret', 'token', 'credential',
+        'postgres://', 'mysql://', 'mongodb://', '://',
+        'bearer ', 'authorization', 'api-key'
+    ]
+
+    has_sensitive = any(pattern in error_str for pattern in sensitive_patterns)
+
+    if has_sensitive:
+        # Return generic message, log details server-side
+        api_logger.error("error_with_sensitive_data", extra={
+            "data": {"error_type": type(error).__name__}
+        })
+        return "An internal error occurred during query processing."
+
+    # For non-sensitive errors, return limited detail
+    error_msg = str(error)
+    if len(error_msg) > 200:
+        error_msg = error_msg[:200] + "..."
+
+    return f"Workflow execution failed: {error_msg}"
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -127,7 +163,7 @@ async def query(request: QueryRequest) -> QueryResponse:
     5. Format the response
 
     Args:
-        request: Query request with natural language question
+        request: Query request with natural language question and optional model overrides
 
     Returns:
         Formatted response with answer, charts, and metadata
@@ -149,12 +185,13 @@ async def query(request: QueryRequest) -> QueryResponse:
         "data": {
             "query": request.query[:100],
             "enable_charts": request.enable_charts,
-            "cwd": os.getcwd()
+            "reasoning_model": request.reasoning_model or "default",
+            "implementation_model": request.implementation_model or "default"
         }
     })
 
     try:
-        # Prepare initial state
+        # Prepare initial state with model overrides
         enabled_agents = ["cortex_researcher", "synthesizer"]
         if request.enable_charts:
             enabled_agents.insert(-1, "chart_generator")
@@ -163,8 +200,14 @@ async def query(request: QueryRequest) -> QueryResponse:
             "messages": [],
             "user_query": request.query,
             "enabled_agents": enabled_agents,
-            "reasoning_model_override": request.reasoning_model,
-            "implementation_model_override": request.implementation_model
+            "plan": {},
+            "current_step": 0,
+            "max_steps": 10,
+            "replans": 0,
+            "model_usage": {},
+            # Pass model overrides to workflow (note: lowercase key names match state structure)
+            "reasoning_model": request.reasoning_model,
+            "implementation_model": request.implementation_model
         }
 
         # Invoke workflow with timeout
@@ -222,9 +265,21 @@ async def query(request: QueryRequest) -> QueryResponse:
         return response
 
     except Exception as e:
+        # Sanitize error message before sending to client
+        safe_message = sanitize_error_message(e)
+
+        # Log full error server-side
+        api_logger.error("query_failed", extra={
+            "data": {
+                "query": request.query,
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            }
+        })
+
         raise HTTPException(
             status_code=500,
-            detail=f"Workflow execution failed: {str(e)}"
+            detail=safe_message
         )
 
 
