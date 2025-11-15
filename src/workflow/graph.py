@@ -131,7 +131,9 @@ def chart_generator_node(state: State):
 
     logger = setup_workflow_logger("oews.workflow.chart_generator")
 
-    agent = create_chart_generator_agent()
+    # Get implementation model override from state
+    implementation_model_key = state.get("implementation_model")
+    agent = create_chart_generator_agent(override_key=implementation_model_key)
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
     # Run agent with standard message payload
@@ -215,8 +217,9 @@ def synthesizer_node(state: State):
     from langchain_core.messages import AIMessage, HumanMessage
     from src.config.llm_factory import llm_factory
 
-    # Get implementation model
-    impl_llm = llm_factory.get_implementation()
+    # Get implementation model with override
+    implementation_model_key = state.get("implementation_model")
+    impl_llm = llm_factory.get_implementation(override_key=implementation_model_key)
 
     # Build summary prompt
     messages = state.get("messages", [])
@@ -291,7 +294,10 @@ def web_researcher_node(state: State):
     import json
 
     logger = setup_workflow_logger("oews.workflow.web_researcher")
-    agent = create_web_research_agent()
+
+    # Get implementation model override from state
+    implementation_model_key = state.get("implementation_model")
+    agent = create_web_research_agent(override_key=implementation_model_key)
     agent_query = state.get("agent_query", state.get("user_query", ""))
 
     # Run agent

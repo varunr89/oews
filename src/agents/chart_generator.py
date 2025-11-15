@@ -1,18 +1,21 @@
 """Chart Generator Agent for creating visualizations."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 from src.config.llm_factory import llm_factory
 
 
-def create_chart_generator_agent():
+def create_chart_generator_agent(override_key: Optional[str] = None):
     """
     Create a simple chart generator agent.
+
+    Args:
+        override_key: Optional model key to use instead of default implementation model
 
     Returns:
         Callable agent function
     """
-    llm = llm_factory.get_implementation()
+    llm = llm_factory.get_implementation(override_key=override_key)
 
     def invoke(input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Generate chart specifications from data."""

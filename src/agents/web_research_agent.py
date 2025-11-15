@@ -1,6 +1,6 @@
 """Web Research Agent using Tavily API."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.config.llm_factory import llm_factory
@@ -27,14 +27,17 @@ Always:
 Be concise but informative."""
 
 
-def create_web_research_agent():
+def create_web_research_agent(override_key: Optional[str] = None):
     """
     Create a web research agent using Tavily.
+
+    Args:
+        override_key: Optional model key to use instead of default implementation model
 
     Returns:
         Agent executor for web research
     """
-    llm = llm_factory.get_implementation()
+    llm = llm_factory.get_implementation(override_key=override_key)
 
     tools = {
         "tavily_search": tavily_search,
