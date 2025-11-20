@@ -48,3 +48,27 @@ def validate_honeypot(honeypot: str) -> None:
 
     if honeypot.strip() != "":
         raise HoneypotTriggered("Honeypot field was filled")
+
+
+def validate_text_length(text: str) -> str:
+    """
+    Validate text length and return trimmed text.
+
+    Args:
+        text: Feedback text to validate
+
+    Returns:
+        Trimmed text
+
+    Raises:
+        ValidationError: If text is too short or too long
+    """
+    trimmed = text.strip()
+
+    if len(trimmed) < 10:
+        raise ValidationError("Text must be at least 10 characters")
+
+    if len(trimmed) > 2000:
+        raise ValidationError("Text must not exceed 2000 characters")
+
+    return trimmed
