@@ -1,7 +1,7 @@
 """Tests for feedback validation functions."""
 
 import pytest
-from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email, validate_category
+from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email, validate_category, validate_id_format
 
 
 def test_validate_required_fields_success():
@@ -125,3 +125,21 @@ def test_validate_category_invalid():
     """Test that invalid category raises ValidationError."""
     with pytest.raises(ValidationError, match="Invalid category"):
         validate_category("invalid")
+
+
+def test_validate_id_format_valid():
+    """Test that valid ID formats pass."""
+    valid_ids = ['local-123', 'test_456', 'abc-def_123', 'test123']
+
+    for id_value in valid_ids:
+        result = validate_id_format(id_value)
+        assert result == id_value
+
+
+def test_validate_id_format_invalid():
+    """Test that invalid ID formats raise ValidationError."""
+    invalid_ids = ['local@123', 'test 456', 'abc!def', '']
+
+    for id_value in invalid_ids:
+        with pytest.raises(ValidationError, match="Invalid ID format"):
+            validate_id_format(id_value)

@@ -120,3 +120,24 @@ def validate_category(category: str) -> str:
         )
 
     return category.lower()
+
+
+def validate_id_format(id_value: str) -> str:
+    """
+    Validate ID format (alphanumeric, dashes, underscores only).
+
+    Args:
+        id_value: Feedback submission ID
+
+    Returns:
+        Validated ID
+
+    Raises:
+        ValidationError: If ID format is invalid
+    """
+    ID_REGEX = r'^[a-zA-Z0-9_-]+$'
+
+    if not re.match(ID_REGEX, id_value):
+        raise ValidationError("Invalid ID format")
+
+    return id_value
