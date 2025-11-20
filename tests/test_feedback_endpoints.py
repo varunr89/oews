@@ -111,7 +111,7 @@ def test_cors_preflight():
     """Test CORS preflight OPTIONS request."""
     response = client.options(
         "/feedback/submit",
-        headers={'Origin': 'https://varunr.github.io'}
+        headers={'Origin': 'https://varunr89.github.io'}
     )
 
     assert response.status_code == 200

@@ -12,7 +12,7 @@ async def test_github_client_initialization():
     with patch.dict(os.environ, {'GITHUB_TOKEN': 'test-token'}):
         client = GitHubClient()
         assert client.token == 'test-token'
-        assert client.owner == 'varunr'
+        assert client.owner == 'varunr89'
         assert client.repo == 'oews-data-explorer'
 
 
