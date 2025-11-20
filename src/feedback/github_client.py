@@ -16,7 +16,7 @@ class GitHubClient:
     def __init__(self):
         """Initialize GitHub client with environment variables."""
         self.token = os.getenv("GITHUB_TOKEN")
-        self.owner = "varunr"
+        self.owner = "varunr89"
         self.repo = "oews-data-explorer"
 
         if not self.token:
