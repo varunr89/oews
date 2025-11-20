@@ -1,5 +1,7 @@
 """FastAPI endpoints for feedback submission."""
 
+import os
+import re
 from fastapi import APIRouter, HTTPException, Request, Response
 from src.feedback.models import FeedbackRequest, FeedbackResponse
 from src.feedback.validation import (
@@ -133,14 +135,29 @@ async def feedback_preflight(request: Request):
     """
     origin = request.headers.get("origin", "")
 
-    # Allowed origins (should match main app CORS config)
-    allowed_origins = [
-        'https://varunr.github.io',
-        'http://localhost:5173',
-        'http://localhost:4173'
-    ]
+    # Get allowed origins from environment (matches main app CORS config)
+    cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    allowed_origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
-    if origin not in allowed_origins:
+    # Check if origin matches allowed list or wildcard patterns
+    origin_allowed = False
+
+    # Check exact matches
+    if origin in allowed_origins:
+        origin_allowed = True
+
+    # Check wildcard patterns
+    if not origin_allowed and any("*.github.io" in o for o in allowed_origins):
+        # Match any subdomain.github.io
+        if re.match(r'^https://[a-z0-9-]+\.github\.io$', origin):
+            origin_allowed = True
+
+    if not origin_allowed and any("*.app.github.dev" in o for o in allowed_origins):
+        # Match any subdomain.app.github.dev (GitHub Codespaces)
+        if re.match(r'^https://[a-z0-9-]+\.app\.github\.dev$', origin):
+            origin_allowed = True
+
+    if not origin_allowed:
         raise HTTPException(status_code=403, detail="Origin not allowed")
 
     return Response(
