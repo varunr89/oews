@@ -72,3 +72,27 @@ def validate_text_length(text: str) -> str:
         raise ValidationError("Text must not exceed 2000 characters")
 
     return trimmed
+
+
+def validate_email(email: Optional[str]) -> str:
+    """
+    Validate email format if provided.
+
+    Args:
+        email: Optional email address
+
+    Returns:
+        Validated email or empty string
+
+    Raises:
+        ValidationError: If email format is invalid
+    """
+    if not email or email.strip() == "":
+        return ""
+
+    EMAIL_REGEX = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+
+    if not re.match(EMAIL_REGEX, email.strip()):
+        raise ValidationError("Invalid email format")
+
+    return email.strip()

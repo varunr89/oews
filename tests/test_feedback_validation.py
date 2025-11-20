@@ -1,7 +1,7 @@
 """Tests for feedback validation functions."""
 
 import pytest
-from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length
+from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email
 
 
 def test_validate_required_fields_success():
@@ -80,3 +80,33 @@ def test_validate_text_length_too_long():
     """Test that long text raises ValidationError."""
     with pytest.raises(ValidationError, match="2000 characters"):
         validate_text_length("a" * 2001)
+
+
+def test_validate_email_valid():
+    """Test that valid email passes."""
+    result = validate_email("user@example.com")
+    assert result == "user@example.com"
+
+
+def test_validate_email_empty():
+    """Test that empty email is allowed."""
+    result = validate_email("")
+    assert result == ""
+
+    result = validate_email(None)
+    assert result == ""
+
+
+def test_validate_email_invalid_formats():
+    """Test that invalid email formats raise ValidationError."""
+    invalid_emails = [
+        "notanemail",
+        "@example.com",
+        "user@",
+        "user @example.com",
+        "user@.com"
+    ]
+
+    for email in invalid_emails:
+        with pytest.raises(ValidationError, match="Invalid email format"):
+            validate_email(email)
