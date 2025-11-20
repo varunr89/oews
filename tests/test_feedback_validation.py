@@ -1,7 +1,8 @@
 """Tests for feedback validation functions."""
 
 import pytest
-from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email, validate_category, validate_id_format
+import time
+from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email, validate_category, validate_id_format, validate_timestamp
 
 
 def test_validate_required_fields_success():
@@ -143,3 +144,30 @@ def test_validate_id_format_invalid():
     for id_value in invalid_ids:
         with pytest.raises(ValidationError, match="Invalid ID format"):
             validate_id_format(id_value)
+
+
+def test_validate_timestamp_valid():
+    """Test that valid timestamp passes."""
+    current_time = int(time.time() * 1000)
+    result = validate_timestamp(current_time)
+    assert result == current_time
+
+
+def test_validate_timestamp_negative():
+    """Test that negative timestamp raises ValidationError."""
+    with pytest.raises(ValidationError, match="Timestamp cannot be negative"):
+        validate_timestamp(-1)
+
+
+def test_validate_timestamp_future():
+    """Test that far future timestamp raises ValidationError."""
+    future_time = int(time.time() * 1000) + 120000  # 2 minutes in future
+    with pytest.raises(ValidationError, match="Timestamp cannot be in the future"):
+        validate_timestamp(future_time)
+
+
+def test_validate_timestamp_grace_period():
+    """Test that timestamp within grace period passes."""
+    near_future = int(time.time() * 1000) + 30000  # 30 seconds in future
+    result = validate_timestamp(near_future)
+    assert result == near_future

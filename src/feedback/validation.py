@@ -141,3 +141,32 @@ def validate_id_format(id_value: str) -> str:
         raise ValidationError("Invalid ID format")
 
     return id_value
+
+
+def validate_timestamp(timestamp: int) -> int:
+    """
+    Validate timestamp is not negative and not too far in future.
+
+    Args:
+        timestamp: Unix timestamp in milliseconds
+
+    Returns:
+        Validated timestamp
+
+    Raises:
+        ValidationError: If timestamp is invalid
+    """
+    try:
+        timestamp_value = int(timestamp)
+    except (ValueError, TypeError):
+        raise ValidationError("Invalid timestamp format")
+
+    if timestamp_value < 0:
+        raise ValidationError("Timestamp cannot be negative")
+
+    # Allow 60 second grace period for clock skew
+    current_time = int(time.time() * 1000)
+    if timestamp_value > current_time + 60000:
+        raise ValidationError("Timestamp cannot be in the future")
+
+    return timestamp_value
