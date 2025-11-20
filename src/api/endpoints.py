@@ -19,6 +19,7 @@ from src.api.models import (
 )
 from src.workflow.graph import create_workflow_graph
 from src.utils.logger import setup_workflow_logger
+from src.feedback import feedback_router, init_github_client
 
 
 # Global workflow graph instance
@@ -47,6 +48,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     except Exception as e:
         print(f"Warning: Failed to initialize workflow graph: {e}")
         print("API will return 503 errors until API keys are configured.")
+
+    # Initialize GitHub client for feedback
+    try:
+        init_github_client()
+        print("GitHub client ready.")
+    except Exception as e:
+        print(f"Warning: Failed to initialize GitHub client: {e}")
+        print("Feedback submission will not work until GITHUB_TOKEN is configured.")
 
     yield
 
@@ -96,6 +105,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# Include feedback router
+app.include_router(feedback_router, prefix="/api/v1", tags=["feedback"])
 
 
 def sanitize_error_message(error: Exception) -> str:
