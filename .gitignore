@@ -1,6 +1,7 @@
 # Project-specific
 .azure-config/
 .azure-extensions/
+.worktrees/
 .claude/
 .codex/
 .specify/
