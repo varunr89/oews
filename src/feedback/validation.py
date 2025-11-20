@@ -96,3 +96,27 @@ def validate_email(email: Optional[str]) -> str:
         raise ValidationError("Invalid email format")
 
     return email.strip()
+
+
+VALID_CATEGORIES = ['bug', 'feature', 'improvement', 'documentation', 'question']
+
+
+def validate_category(category: str) -> str:
+    """
+    Validate category is in allowed list.
+
+    Args:
+        category: Feedback category
+
+    Returns:
+        Validated category
+
+    Raises:
+        ValidationError: If category is not in allowed list
+    """
+    if category.lower() not in VALID_CATEGORIES:
+        raise ValidationError(
+            f"Invalid category. Must be one of: {', '.join(VALID_CATEGORIES)}"
+        )
+
+    return category.lower()

@@ -1,7 +1,7 @@
 """Tests for feedback validation functions."""
 
 import pytest
-from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email
+from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot, validate_text_length, validate_email, validate_category
 
 
 def test_validate_required_fields_success():
@@ -110,3 +110,18 @@ def test_validate_email_invalid_formats():
     for email in invalid_emails:
         with pytest.raises(ValidationError, match="Invalid email format"):
             validate_email(email)
+
+
+def test_validate_category_valid():
+    """Test that valid categories pass."""
+    valid_categories = ['bug', 'feature', 'improvement', 'documentation', 'question']
+
+    for category in valid_categories:
+        result = validate_category(category)
+        assert result == category
+
+
+def test_validate_category_invalid():
+    """Test that invalid category raises ValidationError."""
+    with pytest.raises(ValidationError, match="Invalid category"):
+        validate_category("invalid")
