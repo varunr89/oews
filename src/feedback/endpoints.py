@@ -1,6 +1,6 @@
 """FastAPI endpoints for feedback submission."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from src.feedback.models import FeedbackRequest, FeedbackResponse
 from src.feedback.validation import (
     ValidationError,
@@ -118,3 +118,37 @@ async def submit_feedback(request: FeedbackRequest):
             status_code=500,
             detail="An internal error occurred"
         )
+
+
+@router.options("/feedback/submit")
+async def feedback_preflight(request: Request):
+    """
+    Handle CORS preflight for feedback submission.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Response with CORS headers
+    """
+    origin = request.headers.get("origin", "")
+
+    # Allowed origins (should match main app CORS config)
+    allowed_origins = [
+        'https://varunr.github.io',
+        'http://localhost:5173',
+        'http://localhost:4173'
+    ]
+
+    if origin not in allowed_origins:
+        raise HTTPException(status_code=403, detail="Origin not allowed")
+
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Max-Age": "86400"
+        }
+    )

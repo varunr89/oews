@@ -105,3 +105,15 @@ def test_github_api_failure():
 
         assert response.status_code == 500
         assert 'failed' in response.json()['detail'].lower() or 'error' in response.json()['detail'].lower()
+
+
+def test_cors_preflight():
+    """Test CORS preflight OPTIONS request."""
+    response = client.options(
+        "/feedback/submit",
+        headers={'Origin': 'https://varunr.github.io'}
+    )
+
+    assert response.status_code == 200
+    assert 'access-control-allow-origin' in response.headers
+    assert 'POST' in response.headers.get('access-control-allow-methods', '')
