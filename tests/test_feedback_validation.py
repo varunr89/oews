@@ -1,7 +1,7 @@
 """Tests for feedback validation functions."""
 
 import pytest
-from src.feedback.validation import ValidationError, validate_required_fields
+from src.feedback.validation import ValidationError, HoneypotTriggered, validate_required_fields, validate_honeypot
 
 
 def test_validate_required_fields_success():
@@ -39,3 +39,20 @@ def test_validate_required_fields_missing_text():
     }
     with pytest.raises(ValidationError, match="Missing required field: text"):
         validate_required_fields(data)
+
+
+def test_validate_honeypot_empty():
+    """Test that empty honeypot passes."""
+    validate_honeypot('')  # Should not raise
+
+
+def test_validate_honeypot_filled():
+    """Test that filled honeypot raises HoneypotTriggered."""
+    with pytest.raises(HoneypotTriggered):
+        validate_honeypot('spam@spam.com')
+
+
+def test_validate_honeypot_whitespace():
+    """Test that whitespace-only honeypot raises HoneypotTriggered."""
+    with pytest.raises(HoneypotTriggered):
+        validate_honeypot('  ')
