@@ -1,13 +1,17 @@
 """FastAPI endpoints for OEWS Data Agent."""
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import time
 import os
 import asyncio
+from asyncio import Semaphore
 from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncGenerator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from src.api.models import (
     QueryRequest,
@@ -60,6 +64,22 @@ app = FastAPI(
     description="Multi-agent system for OEWS employment data queries",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# Initialize rate limiter
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[os.getenv("RATE_LIMIT_DEFAULT", "100/hour")],
+    storage_uri="memory://"
+)
+
+# Register limiter with app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Limit concurrent workflow executions
+max_concurrent_requests = Semaphore(
+    int(os.getenv("MAX_CONCURRENT_REQUESTS", "8"))
 )
 
 # Add CORS middleware
@@ -151,7 +171,8 @@ async def health_check():
         503: {"model": ErrorResponse}
     }
 )
-async def query(request: QueryRequest) -> QueryResponse:
+@limiter.limit(os.getenv("RATE_LIMIT_QUERY_ENDPOINT", "10/hour"))
+async def query(request: Request, query_request: QueryRequest) -> QueryResponse:
     """
     Process a natural language query about OEWS employment data.
 
@@ -166,7 +187,8 @@ async def query(request: QueryRequest) -> QueryResponse:
     5. Format the response
 
     Args:
-        request: Query request with natural language question and optional model overrides
+        request: FastAPI Request object (for rate limiting)
+        query_request: Query request with natural language question and optional model overrides
 
     Returns:
         Formatted response with answer, charts, and metadata
@@ -180,92 +202,101 @@ async def query(request: QueryRequest) -> QueryResponse:
             detail="Workflow not initialized. Check API keys and configuration."
         )
 
+    # Check if system is overloaded
+    if max_concurrent_requests.locked():
+        raise HTTPException(
+            status_code=503,
+            detail="System at capacity. Please retry in 1-2 minutes.",
+            headers={"Retry-After": "60"}
+        )
+
     # Record start time
     start_time = time.time()
 
     # DIAGNOSTIC: Test if logging works in API process
     api_logger.debug("query_received", extra={
         "data": {
-            "query": request.query[:100],
-            "enable_charts": request.enable_charts,
-            "reasoning_model": request.reasoning_model or "default",
-            "implementation_model": request.implementation_model or "default"
+            "query": query_request.query[:100],
+            "enable_charts": query_request.enable_charts,
+            "reasoning_model": query_request.reasoning_model or "default",
+            "implementation_model": query_request.implementation_model or "default"
         }
     })
 
     try:
-        # Prepare initial state with model overrides
-        enabled_agents = ["cortex_researcher", "synthesizer"]
-        if request.enable_charts:
-            enabled_agents.insert(-1, "chart_generator")
+        async with max_concurrent_requests:
+            # Prepare initial state with model overrides
+            enabled_agents = ["cortex_researcher", "synthesizer"]
+            if query_request.enable_charts:
+                enabled_agents.insert(-1, "chart_generator")
 
-        initial_state = {
-            "messages": [],
-            "user_query": request.query,
-            "enabled_agents": enabled_agents,
-            "plan": {},
-            "current_step": 0,
-            "max_steps": 10,
-            "replans": 0,
-            "model_usage": {},
-            # Pass model overrides to workflow (note: lowercase key names match state structure)
-            "reasoning_model": request.reasoning_model,
-            "implementation_model": request.implementation_model
-        }
+            initial_state = {
+                "messages": [],
+                "user_query": query_request.query,
+                "enabled_agents": enabled_agents,
+                "plan": {},
+                "current_step": 0,
+                "max_steps": 10,
+                "replans": 0,
+                "model_usage": {},
+                # Pass model overrides to workflow (note: lowercase key names match state structure)
+                "reasoning_model": query_request.reasoning_model,
+                "implementation_model": query_request.implementation_model
+            }
 
-        # Invoke workflow with timeout
-        # Run blocking workflow_graph.invoke() in thread pool to avoid blocking event loop
-        # Force flush API log
-        import logging
-        for handler in api_logger.handlers:
-            handler.flush()
+            # Invoke workflow with timeout
+            # Run blocking workflow_graph.invoke() in thread pool to avoid blocking event loop
+            # Force flush API log
+            import logging
+            for handler in api_logger.handlers:
+                handler.flush()
 
-        # Define blocking workflow execution
-        def run_workflow():
-            return workflow_graph.invoke(
-                initial_state,
-                config={"recursion_limit": 100}
+            # Define blocking workflow execution
+            def run_workflow():
+                return workflow_graph.invoke(
+                    initial_state,
+                    config={"recursion_limit": 100}
+                )
+
+            # Run with timeout (5 minutes)
+            loop = asyncio.get_event_loop()
+            try:
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(executor, run_workflow),
+                    timeout=REQUEST_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"Request processing exceeded {REQUEST_TIMEOUT} second timeout. The query may be too complex or the system is under heavy load."
+                )
+
+            # Extract formatted response
+            formatted = result.get("formatted_response", {})
+
+            # Calculate execution time
+            execution_time = int((time.time() - start_time) * 1000)
+
+            # Build response
+            response = QueryResponse(
+                answer=formatted.get("answer", result.get("final_answer", "No answer generated.")),
+                charts=[
+                    ChartSpec(**chart)
+                    for chart in formatted.get("charts", [])
+                ],
+                data_sources=[
+                    DataSource(**source)
+                    for source in formatted.get("data_sources", [])
+                ],
+                metadata=Metadata(
+                    models_used=result.get("model_usage", {}),
+                    execution_time_ms=execution_time,
+                    plan=result.get("plan"),
+                    replans=result.get("replans", 0)
+                )
             )
 
-        # Run with timeout (5 minutes)
-        loop = asyncio.get_event_loop()
-        try:
-            result = await asyncio.wait_for(
-                loop.run_in_executor(executor, run_workflow),
-                timeout=REQUEST_TIMEOUT
-            )
-        except asyncio.TimeoutError:
-            raise HTTPException(
-                status_code=504,
-                detail=f"Request processing exceeded {REQUEST_TIMEOUT} second timeout. The query may be too complex or the system is under heavy load."
-            )
-
-        # Extract formatted response
-        formatted = result.get("formatted_response", {})
-
-        # Calculate execution time
-        execution_time = int((time.time() - start_time) * 1000)
-
-        # Build response
-        response = QueryResponse(
-            answer=formatted.get("answer", result.get("final_answer", "No answer generated.")),
-            charts=[
-                ChartSpec(**chart)
-                for chart in formatted.get("charts", [])
-            ],
-            data_sources=[
-                DataSource(**source)
-                for source in formatted.get("data_sources", [])
-            ],
-            metadata=Metadata(
-                models_used=result.get("model_usage", {}),
-                execution_time_ms=execution_time,
-                plan=result.get("plan"),
-                replans=result.get("replans", 0)
-            )
-        )
-
-        return response
+            return response
 
     except Exception as e:
         # Sanitize error message before sending to client
@@ -274,7 +305,7 @@ async def query(request: QueryRequest) -> QueryResponse:
         # Log full error server-side
         api_logger.error("query_failed", extra={
             "data": {
-                "query": request.query,
+                "query": query_request.query,
                 "error_type": type(e).__name__,
                 "error_message": str(e)
             }
