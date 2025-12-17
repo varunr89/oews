@@ -13,9 +13,12 @@ COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && \
     uv pip install --system -e .
 
-# Copy application code (NO DATABASE - mounted as volume)
+# Copy application code
 COPY src/ ./src/
 COPY config/ ./config/
+
+# Bake database into image (read-only, ~2.2GB)
+COPY data/oews.db ./data/oews.db
 
 # Security: non-root user
 RUN useradd -m -u 1000 appuser && \
