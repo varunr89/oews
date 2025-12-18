@@ -1,6 +1,10 @@
-# Don't copy database into image (mounted as volume)
-data/
-*.db
+# Include database for ACA deployment (baked into image)
+# Exclude other data files
+data/backups/
+data/raw/
+data/*.json
+data/*.txt
+data/.DS_Store
 
 # Development files
 .git/
