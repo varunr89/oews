@@ -17,8 +17,9 @@ RUN pip install --no-cache-dir uv && \
 COPY src/ ./src/
 COPY config/ ./config/
 
-# Bake database into image (read-only, ~2.2GB)
-COPY data/oews.db ./data/oews.db
+# Bake database into image (compressed in git, decompressed during build)
+COPY data/oews.db.gz ./data/oews.db.gz
+RUN gunzip ./data/oews.db.gz
 
 # Security: non-root user
 RUN useradd -m -u 1000 appuser && \

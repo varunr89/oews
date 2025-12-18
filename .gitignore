@@ -18,6 +18,8 @@ alembic/script.py.mako
 *.sqlite
 *.sqlite3
 oews_migration.db
+# Exception: track compressed OEWS database via Git LFS for ACA deployment
+!data/oews.db.gz
 
 # Data files
 *.csv

@@ -1,5 +1,6 @@
-# Include database for ACA deployment (baked into image)
+# Include compressed database for ACA deployment (decompressed during build)
 # Exclude other data files
+data/oews.db
 data/backups/
 data/raw/
 data/*.json
